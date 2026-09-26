@@ -34,6 +34,10 @@ func (c *RoomController) Index(w http.ResponseWriter, r *http.Request) {
 	for _, q := range r.URL.Query()["room"] {
 		for _, part := range strings.Split(q, ",") {
 			if trimmed := strings.TrimSpace(part); trimmed != "" {
+				if len(trimmed) > maxParamLength {
+					views.Error(w, "Parameter too long", http.StatusBadRequest)
+					return
+				}
 				requested = append(requested, trimmed)
 			}
 		}

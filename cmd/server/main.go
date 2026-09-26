@@ -27,6 +27,7 @@ func main() {
 		Addr:              ":" + cfg.Port,
 		Handler:           application.Handler,
 		ReadHeaderTimeout: 10 * time.Second,
+		MaxHeaderBytes:    16 << 10, // URLs are short; cap request line + headers at 16 KiB
 	}
 
 	// Create channel to listen for interrupt/termination signals

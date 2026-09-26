@@ -86,7 +86,7 @@ go run ./cmd/migrate custom --file data/source/custom/lab.pdf --round final_2_25
 
 # Edit room layouts (build the UI once, then open http://localhost:8081)
 (cd cmd/room-config/frontend && npm ci && npm run build)
-go run ./cmd/room-config
+go run ./cmd/room-config          # loopback only; see ROOM_CONFIG_ADDR
 ```
 
 PDF imports need `pdftotext` (poppler-utils). The server re-reads rounds,
@@ -109,6 +109,20 @@ docker compose exec backend ./migrate /app/data/source/final_2_2568.xlsx final_2
 ```
 
 The image contains `server` and `migrate`; mount your data directory at `/app/data`.
+
+## Security
+
+- SQL is fully parameterized; `internal/app/security_test.go` exercises
+  injection payloads against every query parameter.
+- Query values are capped at 64 characters (student IDs at 20 digits) and
+  request headers at 16 KiB, because values become in-memory cache keys.
+- Every response carries `nosniff`, `X-Frame-Options: DENY`,
+  `Referrer-Policy: no-referrer` and a `default-src 'none'` CSP.
+- Room images are served through `http.Dir`, which cannot leave `room/image/`.
+- The room-config tool listens on loopback only, rejects non-loopback `Host`
+  headers, cross-site and non-JSON writes, and bodies over 1 MiB.
+- CI runs `govulncheck`, `gosec`, the race detector and fuzz tests for the
+  parsers that handle untrusted input.
 
 ## Documentation
 

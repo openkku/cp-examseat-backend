@@ -29,9 +29,13 @@ func main() {
 	store := filesystem.NewRoomConfigStore(config.Load().RoomDir())
 	handler := routes.NewRoomConfig(controllers.NewRoomConfigController(store), serveEmbeddedFrontend)
 
-	port := "8081"
+	// Loopback only: the tool edits files on disk and has no authentication.
+	addr := os.Getenv("ROOM_CONFIG_ADDR")
+	if addr == "" {
+		addr = "127.0.0.1:8081"
+	}
 	srv := &http.Server{
-		Addr:              ":" + port,
+		Addr:              addr,
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
@@ -40,7 +44,7 @@ func main() {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
-		fmt.Printf("🚀 Room Config Manager running on http://localhost:%s\n", port)
+		fmt.Printf("🚀 Room Config Manager running on http://%s\n", addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Room Config Manager ListenAndServe error: %v", err)
 		}
@@ -83,7 +87,7 @@ func serveEmbeddedFrontend(w http.ResponseWriter, r *http.Request) {
 	if mimeType := mime.TypeByExtension(filepath.Ext(path)); mimeType != "" {
 		w.Header().Set("Content-Type", mimeType)
 	}
-	w.Write(fileBytes)
+	w.Write(fileBytes) // #nosec G705 -- embedded build assets, not user input
 }
 
 const missingBuildPage = `

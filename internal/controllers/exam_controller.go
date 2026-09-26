@@ -27,6 +27,10 @@ func (c *ExamController) Show(w http.ResponseWriter, r *http.Request) {
 		views.Error(w, "Student ID and Round are required", http.StatusBadRequest)
 		return
 	}
+	if len(id) > maxStudentIDDigits || paramsTooLong(r.URL.Query()) {
+		views.Error(w, "Parameter too long", http.StatusBadRequest)
+		return
+	}
 
 	seats, err := c.exams.StudentSchedule(r.Context(), id, &round)
 	if err != nil {

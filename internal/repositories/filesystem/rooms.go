@@ -21,7 +21,7 @@ func LoadRoomCatalog(roomDir string, imageBaseURL string) models.RoomCatalog {
 	catalog := models.RoomCatalog{Rooms: make(map[string]models.Room)}
 
 	metaPath := filepath.Join(roomDir, "metadata.json")
-	metaContent, err := os.ReadFile(metaPath)
+	metaContent, err := os.ReadFile(metaPath) // #nosec G304 -- path from DATA_DIR configuration
 	if err != nil {
 		log.Printf("⚠️ Warning: Could not read room metadata at %s: %v. Starting with empty layouts.", metaPath, err)
 		return catalog
@@ -44,7 +44,8 @@ func LoadRoomCatalog(roomDir string, imageBaseURL string) models.RoomCatalog {
 
 	mapDir := filepath.Join(roomDir, "map")
 	for name, meta := range metadata {
-		content, err := os.ReadFile(filepath.Join(mapDir, meta.LayoutFile))
+		// Base confines layout files to map/, like the room-config tool does.
+		content, err := os.ReadFile(filepath.Join(mapDir, filepath.Base(meta.LayoutFile))) // #nosec G304 -- confined to map/
 		if err != nil {
 			log.Printf("⚠️  Warning: Room '%s' mapped to '%s' but file is missing/unreadable.", name, meta.LayoutFile)
 			continue

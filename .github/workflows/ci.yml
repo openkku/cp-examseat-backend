@@ -72,6 +72,72 @@ jobs:
           
           exit $EXIT_CODE
 
+  race:
+    name: Race Detector
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+
+      - name: Install Python dependencies
+        run: pip install openpyxl
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Run Go Tests with -race
+        run: go test -race ./...
+
+  security:
+    name: Security Scan (govulncheck, gosec)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      # Latest 1.26 patch release, so the scan reflects the toolchain we ship
+      # (the Docker image builds with golang:1.26-alpine).
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.x'
+          cache: true
+
+      - name: govulncheck (known vulnerabilities in dependencies and stdlib)
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+
+      - name: gosec (static analysis)
+        run: go run github.com/securego/gosec/v2/cmd/gosec@v2.29.0 -severity medium -confidence medium -exclude-dir=cmd/room-config/frontend ./...
+
+  fuzz:
+    name: Fuzz Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Fuzz untrusted-input parsers
+        run: |
+          go test ./internal/compression -run '^$' -fuzz '^FuzzNegotiate$' -fuzztime 30s
+          go test ./internal/models -run '^$' -fuzz '^FuzzNormalizeStudentID$' -fuzztime 30s
+          go test ./internal/models -run '^$' -fuzz '^FuzzParseLabels$' -fuzztime 30s
+          go test ./internal/models -run '^$' -fuzz '^FuzzCompareRounds$' -fuzztime 30s
+          go test ./internal/importers/pdf -run '^$' -fuzz '^FuzzParsePDFText$' -fuzztime 30s
+
   room-config-ui:
     name: Room Config UI Build
     runs-on: ubuntu-latest

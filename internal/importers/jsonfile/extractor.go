@@ -13,7 +13,7 @@ import (
 // ExtractSeats reads seats from a JSON file, filling blanks with the given
 // defaults and deriving TimeStart/TimeEnd and Category.
 func ExtractSeats(filePath string, roundID string, defaultLabels []string, roomLayout string, customID string) ([]models.Seat, error) {
-	data, err := os.ReadFile(filePath)
+	data, err := os.ReadFile(filePath) // #nosec G304 -- operator-supplied import file
 	if err != nil {
 		return nil, fmt.Errorf("failed to read json file: %w", err)
 	}

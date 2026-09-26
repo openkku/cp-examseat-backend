@@ -31,6 +31,10 @@ func (c *ExploreController) Index(w http.ResponseWriter, r *http.Request) {
 		views.Error(w, "Round, Room, Date, and Time parameters are required", http.StatusBadRequest)
 		return
 	}
+	if paramsTooLong(q) {
+		views.Error(w, "Parameter too long", http.StatusBadRequest)
+		return
+	}
 
 	key := fmt.Sprintf("explore:%s:%s:%s:%s:%s", round, room, date, timeParam, seat)
 	err := c.cache.ServeJSON(w, r, key, func() (int, any, error) {
@@ -64,6 +68,10 @@ func (c *ExploreController) Options(w http.ResponseWriter, r *http.Request) {
 
 	if round == "" {
 		views.Error(w, "Round parameter is required", http.StatusBadRequest)
+		return
+	}
+	if paramsTooLong(q) {
+		views.Error(w, "Parameter too long", http.StatusBadRequest)
 		return
 	}
 

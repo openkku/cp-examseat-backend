@@ -3,6 +3,8 @@ package controllers
 import (
 	"log"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -13,6 +15,8 @@ import (
 	"github.com/openkku/cp-examseat-backend/internal/services"
 	"github.com/openkku/cp-examseat-backend/internal/views"
 )
+
+var filenameSafe = regexp.MustCompile(`[^0-9-]+`)
 
 // CalendarController serves per-student iCalendar subscription feeds.
 type CalendarController struct {
@@ -35,10 +39,20 @@ func NewCalendarController(exams *services.ExamService) *CalendarController {
 
 // Show handles GET /api/calendar/{id} and /api/calendar/{id}.ics.
 func (c *CalendarController) Show(w http.ResponseWriter, r *http.Request) {
-	idParam := strings.TrimSuffix(chi.URLParam(r, "id"), ".ics")
+	// chi returns path parameters still percent-encoded.
+	rawID, err := url.PathUnescape(chi.URLParam(r, "id"))
+	if err != nil {
+		views.Error(w, "Student ID is required", http.StatusBadRequest)
+		return
+	}
+	idParam := strings.TrimSuffix(rawID, ".ics")
 	id := models.NormalizeStudentID(idParam)
 	if id == "" {
 		views.Error(w, "Student ID is required", http.StatusBadRequest)
+		return
+	}
+	if len(id) > maxStudentIDDigits {
+		views.Error(w, "Parameter too long", http.StatusBadRequest)
 		return
 	}
 
@@ -66,5 +80,6 @@ func (c *CalendarController) Show(w http.ResponseWriter, r *http.Request) {
 		c.feeds.Set(id, ics)
 	}
 
-	views.Calendar(w, "exams-"+idParam+".ics", ics)
+	// Only digits and dashes reach the Content-Disposition filename.
+	views.Calendar(w, "exams-"+filenameSafe.ReplaceAllString(idParam, "")+".ics", ics)
 }

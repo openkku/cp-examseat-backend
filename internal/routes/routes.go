@@ -27,6 +27,7 @@ func New(c Controllers, allowedOrigins []string) http.Handler {
 
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
+	r.Use(middleware.SecurityHeaders)
 	r.Use(middleware.CORS(allowedOrigins))
 	r.Use(middleware.Compress)
 
@@ -48,13 +49,14 @@ func New(c Controllers, allowedOrigins []string) http.Handler {
 }
 
 // NewRoomConfig builds the router of the room-config tool: its JSON API plus
-// the embedded editor UI served by ui for every other path.
+// the embedded editor UI served by ui for every other path. The UI is served
+// from the same origin, so no CORS is allowed.
 func NewRoomConfig(c *controllers.RoomConfigController, ui http.HandlerFunc) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
-	r.Use(middleware.CORS([]string{"*"}))
+	r.Use(middleware.LocalToolGuard)
 
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/config", c.Index)

@@ -8,6 +8,7 @@ This document describes the environment variables supported by the CP Exam Seat 
 | `DATA_DIR` | `data` | `cmd/server`, `cmd/migrate`, `cmd/room-config` |
 | `IMAGE_BASE_URL` | *(empty)* | `cmd/server` |
 | `CORS_ALLOWED_ORIGINS` | *(empty)* | `cmd/server` |
+| `ROOM_CONFIG_ADDR` | `127.0.0.1:8081` | `cmd/room-config` |
 
 ---
 
@@ -65,6 +66,14 @@ Comma-separated list of origins allowed to call the API from a browser on anothe
 ```bash
 CORS_ALLOWED_ORIGINS="https://exam.example.com,https://staging.example.com"
 ```
+
+---
+
+## 5. `ROOM_CONFIG_ADDR`
+
+Listen address of the room-config editor. It defaults to loopback because the
+tool writes files and has no authentication; it also refuses requests whose
+`Host` is not a loopback name (DNS rebinding) and cross-site writes (CSRF).
 
 ---
 

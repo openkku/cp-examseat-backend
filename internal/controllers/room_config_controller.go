@@ -47,7 +47,7 @@ func (c *RoomConfigController) SaveRoom(w http.ResponseWriter, r *http.Request) 
 
 	var meta models.RoomMeta
 	if err := json.NewDecoder(r.Body).Decode(&meta); err != nil {
-		views.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
+		bodyError(w, err)
 		return
 	}
 
@@ -93,7 +93,7 @@ func (c *RoomConfigController) Layout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(data)
+	w.Write(data) // #nosec G705 -- JSON layout file served as application/json with nosniff
 }
 
 // SaveLayout handles POST /api/layout/{filename}.
@@ -106,7 +106,7 @@ func (c *RoomConfigController) SaveLayout(w http.ResponseWriter, r *http.Request
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		views.Error(w, err.Error(), http.StatusBadRequest)
+		bodyError(w, err)
 		return
 	}
 
@@ -120,4 +120,15 @@ func (c *RoomConfigController) SaveLayout(w http.ResponseWriter, r *http.Request
 		return
 	}
 	views.JSON(w, http.StatusOK, saved)
+}
+
+// bodyError reports an unreadable request body, with 413 when it exceeded
+// the size limit set by middleware.LocalToolGuard.
+func bodyError(w http.ResponseWriter, err error) {
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		views.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+	views.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
 }

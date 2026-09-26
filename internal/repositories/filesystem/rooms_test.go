@@ -61,3 +61,14 @@ func TestLoadRoomCatalogMissingMetadata(t *testing.T) {
 		t.Errorf("expected empty usable catalog, got %+v", catalog)
 	}
 }
+
+func TestLoadRoomCatalogConfinesLayoutFiles(t *testing.T) {
+	dir := t.TempDir()
+	roomDir := filepath.Join(dir, "room")
+	writeFile(t, filepath.Join(dir, "secret.json"), `{"layout": ["secret"]}`)
+	writeFile(t, filepath.Join(roomDir, "metadata.json"), `{"EVIL": {"layout_file": "../../secret.json"}}`)
+
+	if catalog := LoadRoomCatalog(roomDir, ""); len(catalog.Rooms) != 0 {
+		t.Errorf("layout_file escaped map/: %+v", catalog.Rooms)
+	}
+}

@@ -31,13 +31,13 @@ func NewRoomConfigStore(roomDir string) *RoomConfigStore {
 }
 
 func (s *RoomConfigStore) metadataPath() string {
-	os.MkdirAll(s.roomDir, 0755)
+	os.MkdirAll(s.roomDir, 0755) // #nosec G301 -- room assets are public, served to every visitor
 	return filepath.Join(s.roomDir, "metadata.json")
 }
 
 func (s *RoomConfigStore) mapDir() string {
 	dir := filepath.Join(s.roomDir, "map")
-	os.MkdirAll(dir, 0755)
+	os.MkdirAll(dir, 0755) // #nosec G301 -- room assets are public, served to every visitor
 	return dir
 }
 
@@ -71,7 +71,7 @@ func (s *RoomConfigStore) writeMetadata(config map[string]models.RoomMeta) error
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.metadataPath(), data, 0644)
+	return os.WriteFile(s.metadataPath(), data, 0644) // #nosec G306 -- public room metadata
 }
 
 // SaveRoom creates or replaces a room entry, creating an empty layout file
@@ -83,7 +83,7 @@ func (s *RoomConfigStore) SaveRoom(roomID string, meta models.RoomMeta) error {
 	if meta.LayoutFile != "" {
 		layoutPath := s.layoutPath(meta.LayoutFile)
 		if _, err := os.Stat(layoutPath); os.IsNotExist(err) {
-			os.WriteFile(layoutPath, emptyLayout, 0644)
+			os.WriteFile(layoutPath, emptyLayout, 0644) // #nosec G306 -- public room layout
 		}
 	}
 
@@ -133,7 +133,7 @@ func (s *RoomConfigStore) SaveLayout(filename string, body []byte) error {
 	if err := json.Unmarshal(body, &probe); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidLayout, err)
 	}
-	return os.WriteFile(s.layoutPath(filename), body, 0644)
+	return os.WriteFile(s.layoutPath(filename), body, 0644) // #nosec G306 -- public room layout
 }
 
 // ErrInvalidLayout is returned by SaveLayout for a body that is not a JSON object.

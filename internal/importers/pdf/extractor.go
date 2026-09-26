@@ -4,6 +4,7 @@ package pdf
 import (
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -13,7 +14,12 @@ import (
 
 // ExtractSeats parses a PDF file using pdftotext and returns extracted seats.
 func ExtractSeats(filePath string, defaultRound string, defaultLabels []string, roomLayout string, customID string) ([]models.Seat, error) {
-	out, err := exec.Command("pdftotext", filePath, "-").Output()
+	// An absolute path can never start with "-" and be read as an option.
+	absPath, err := filepath.Abs(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve %s: %w", filePath, err)
+	}
+	out, err := exec.Command("pdftotext", absPath, "-").Output() // #nosec G204 -- fixed binary, no shell; path is operator-supplied
 	if err != nil {
 		return nil, fmt.Errorf("failed to run pdftotext on %s: %w", filePath, err)
 	}
