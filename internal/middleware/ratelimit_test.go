@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -91,5 +92,21 @@ func TestRateLimitDisabled(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("disabled limiter throttled request %d", i)
 		}
+	}
+}
+
+func TestRateLimiterCapsTrackedClients(t *testing.T) {
+	rl := NewRateLimiter(1, 1, NewClientIPResolver(nil))
+	rl.maxVisitors = 3
+
+	for i := 0; i < 10; i++ {
+		rl.reserve(fmt.Sprintf("198.51.100.%d", i))
+	}
+	if len(rl.visitors) != 4 { // 3 clients + the shared overflow bucket
+		t.Fatalf("tracked %d buckets; want 4", len(rl.visitors))
+	}
+	// Clients past the cap share one bucket, so they are still limited.
+	if ok, _ := rl.reserve("203.0.113.50"); ok {
+		t.Error("overflow bucket should already be exhausted")
 	}
 }

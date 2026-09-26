@@ -85,10 +85,11 @@ func (r *ClientIPResolver) ClientIP(req *http.Request) string {
 
 // RateLimiter applies a token bucket per client IP.
 type RateLimiter struct {
-	limit    rate.Limit
-	burst    int
-	resolver *ClientIPResolver
-	now      func() time.Time
+	limit       rate.Limit
+	burst       int
+	maxVisitors int
+	resolver    *ClientIPResolver
+	now         func() time.Time
 
 	mu        sync.Mutex
 	visitors  map[string]*visitor
@@ -103,14 +104,22 @@ type visitor struct {
 // idleTTL is how long an idle client's bucket is kept.
 const idleTTL = 10 * time.Minute
 
+// maxVisitors caps the number of tracked clients. Past it, new clients share
+// one overflow bucket, so a flood of distinct (possibly spoofed) addresses
+// cannot grow memory without bound.
+const maxVisitors = 100_000
+
+const overflowKey = "\x00overflow"
+
 // NewRateLimiter allows rps requests per second with the given burst per client.
 func NewRateLimiter(rps float64, burst int, resolver *ClientIPResolver) *RateLimiter {
 	return &RateLimiter{
-		limit:    rate.Limit(rps),
-		burst:    burst,
-		resolver: resolver,
-		now:      time.Now,
-		visitors: make(map[string]*visitor),
+		limit:       rate.Limit(rps),
+		burst:       burst,
+		maxVisitors: maxVisitors,
+		resolver:    resolver,
+		now:         time.Now,
+		visitors:    make(map[string]*visitor),
 	}
 }
 
@@ -131,6 +140,10 @@ func (rl *RateLimiter) reserve(key string) (ok bool, retryAfter time.Duration) {
 	}
 
 	v, found := rl.visitors[key]
+	if !found && len(rl.visitors) >= rl.maxVisitors {
+		key = overflowKey
+		v, found = rl.visitors[key]
+	}
 	if !found {
 		v = &visitor{limiter: rate.NewLimiter(rl.limit, rl.burst)}
 		rl.visitors[key] = v

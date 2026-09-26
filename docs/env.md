@@ -99,6 +99,12 @@ direct peer is listed in `TRUSTED_PROXIES` (IPs, CIDRs, or the shorthands
 spoof its address. If the frontend reaches the backend over a public
 address, add that address here.
 
+Next.js forwards the `X-Forwarded-For` header it receives without appending
+the client address, so the frontend must itself sit behind a reverse proxy
+that sets the header (see the frontend README, "Deployment"). At most
+100,000 client buckets are tracked; past that, new clients share one bucket
+so a flood of spoofed addresses cannot exhaust memory.
+
 ---
 
 ## 7. Admin API: `ADMIN_TOKEN`, `MAX_UPLOAD_MB`
