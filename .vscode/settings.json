@@ -1,0 +1,12 @@
+{
+  "go.gopath": "${workspaceFolder}/.go",
+  "go.toolsEnvVars": {
+    "GOPATH": "${workspaceFolder}/.go",
+    "GOCACHE": "${workspaceFolder}/.go/cache"
+  },
+  "terminal.integrated.env.linux": {
+    "GOPATH": "${workspaceFolder}/.go",
+    "GOCACHE": "${workspaceFolder}/.go/cache",
+    "PATH": "${workspaceFolder}/.go/bin:${env:PATH}"
+  }
+}
