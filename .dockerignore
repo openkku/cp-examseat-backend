@@ -1,0 +1,15 @@
+.git
+.github
+.vscode
+.idea
+data
+bin
+node_modules
+cmd/room-config/frontend/node_modules
+*.db
+*.log
+.env
+.env.*
+Dockerfile
+docker-compose.yml
+.dockerignore

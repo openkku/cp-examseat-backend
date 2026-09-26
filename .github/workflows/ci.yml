@@ -1,0 +1,172 @@
+name: CI Pipeline
+
+on:
+  push:
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  backend-tests:
+    name: Backend Tests (Go)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install openpyxl
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Check formatting
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Run Go Tests
+        run: |
+          # Run tests, stream to console, and save logs
+          set -o pipefail
+          EXIT_CODE=0
+          go test -v ./... | tee go-test.log || EXIT_CODE=$?
+          
+          # Disable exit-on-error and pipefail so grep mismatch doesn't abort script
+          set +e
+          set +o pipefail
+          
+          # Parse results
+          PASSED_PKGS=$(grep -E '^ok[[:space:]]+' go-test.log | wc -l)
+          FAILED_PKGS=$(grep -E '^FAIL[[:space:]]+' go-test.log | wc -l)
+          TOTAL_PKGS=$((PASSED_PKGS + FAILED_PKGS))
+          
+          # Write Markdown summary
+          echo "### Go Test Report 🧪" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### Summary" >> $GITHUB_STEP_SUMMARY
+          if [ "$FAILED_PKGS" -eq 0 ]; then
+            echo "- **Packages**: ✅ $PASSED_PKGS passed · $TOTAL_PKGS total" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Packages**: ❌ $PASSED_PKGS passed, $FAILED_PKGS failed · $TOTAL_PKGS total" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Collapsible detailed logs
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "<details><summary>View Full Go Test Logs</summary>" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`text" >> $GITHUB_STEP_SUMMARY
+          cat go-test.log >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "</details>" >> $GITHUB_STEP_SUMMARY
+          
+          exit $EXIT_CODE
+
+  race:
+    name: Race Detector
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+
+      - name: Install Python dependencies
+        run: pip install openpyxl
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Run Go Tests with -race
+        run: go test -race ./...
+
+  security:
+    name: Security Scan (govulncheck, gosec)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      # Latest 1.26 patch release, so the scan reflects the toolchain we ship
+      # (the Docker image builds with golang:1.26-alpine).
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.x'
+          cache: true
+
+      - name: govulncheck (known vulnerabilities in dependencies and stdlib)
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+
+      - name: gosec (static analysis)
+        run: go run github.com/securego/gosec/v2/cmd/gosec@v2.29.0 -severity medium -confidence medium -exclude-dir=cmd/room-config/frontend ./...
+
+  fuzz:
+    name: Fuzz Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Fuzz untrusted-input parsers
+        run: |
+          go test ./internal/compression -run '^$' -fuzz '^FuzzNegotiate$' -fuzztime 30s
+          go test ./internal/models -run '^$' -fuzz '^FuzzNormalizeStudentID$' -fuzztime 30s
+          go test ./internal/models -run '^$' -fuzz '^FuzzParseLabels$' -fuzztime 30s
+          go test ./internal/models -run '^$' -fuzz '^FuzzCompareRounds$' -fuzztime 30s
+          go test ./internal/importers/pdf -run '^$' -fuzz '^FuzzParsePDFText$' -fuzztime 30s
+
+  room-config-ui:
+    name: Room Config UI Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cmd/room-config/frontend
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: 'npm'
+          cache-dependency-path: cmd/room-config/frontend/package-lock.json
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Build Image
+        run: docker build -t cp-examseat-backend:ci .

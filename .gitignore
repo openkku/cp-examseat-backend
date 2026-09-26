@@ -1,0 +1,44 @@
+# Go
+.go/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/server
+/migrate
+/room-config
+bin/
+
+# Room-config editor UI (dist/.gitkeep keeps the go:embed pattern valid before a build)
+node_modules/
+cmd/room-config/frontend/dist/*
+!cmd/room-config/frontend/dist/.gitkeep
+
+# SQLite databases and data folder
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+data/
+
+# Environments and Logs
+.env
+.env.local
+.env.*.local
+*.log
+go-test.log
+
+# Editor and OS files
+.idea/
+.DS_Store
+Thumbs.db
+
+# Project-specific / Backups
+playground/
+public/
+oldpublic/
+original_exam_table/
+
+.npm-cache/

@@ -1,0 +1,24 @@
+services:
+  backend:
+    build: ./
+    container_name: cp_examseat_backend
+    ports:
+      - 127.0.0.1:8080:8080
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data:z
+    #environment:
+      # - DATA_DIR=/app/data
+      # - IMAGE_BASE_URL=
+      # - CORS_ALLOWED_ORIGINS=https://exam.example.com
+    networks:
+      - cpkku-network
+
+networks:
+  cpkku-network:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: d000::/112
+    driver_opts:
+      com.docker.network.bridge.name: cpkku-network
