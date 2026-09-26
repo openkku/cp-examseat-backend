@@ -7,7 +7,7 @@ require (
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/klauspost/compress v1.18.6
 	github.com/minoplhy/ikalendar v0.2.0
-	github.com/xuri/excelize/v2 v2.10.1
+	github.com/xuri/excelize/v2 v2.11.0
 	modernc.org/sqlite v1.52.0
 )
 
