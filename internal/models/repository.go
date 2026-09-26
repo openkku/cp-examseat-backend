@@ -19,4 +19,15 @@ type ExamRepository interface {
 	PurgeCustomDataset(ctx context.Context, roundID string, customID string) error
 	GetRounds(ctx context.Context) ([]Round, error)
 	GetAllSeats(ctx context.Context) ([]Seat, error)
+
+	// Administration
+	RoundSummaries(ctx context.Context) ([]RoundSummary, error)
+	DeleteRound(ctx context.Context, roundID string) error
+	SetRoundLabel(ctx context.Context, roundID string, label string) error
+	// Backup writes a consistent snapshot of the database to destPath,
+	// which must not exist yet.
+	Backup(ctx context.Context, destPath string) error
 }
+
+// ErrRoundNotFound is returned for an operation on an unknown round.
+var ErrRoundNotFound = errors.New("round not found")

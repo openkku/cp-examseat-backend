@@ -70,3 +70,19 @@ func DefaultRoundLabel(roundID string) string {
 	}
 	return roundID
 }
+
+// CustomDataset is an out-of-schedule dataset imported under a custom ID.
+type CustomDataset struct {
+	ID    string `json:"id"`
+	Seats int    `json:"seats"`
+}
+
+// RoundSummary describes the data stored for one round (admin view).
+type RoundSummary struct {
+	ID              string          `json:"id"`
+	Label           string          `json:"label"`
+	Seats           int             `json:"seats"`
+	Students        int             `json:"students"`
+	InScheduleSeats int             `json:"in_schedule_seats"`
+	CustomDatasets  []CustomDataset `json:"custom_datasets"`
+}

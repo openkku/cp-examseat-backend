@@ -14,6 +14,16 @@ func RoomPayload(room models.Room, withLayout bool) map[string]any {
 		"i_map":    room.MapURL,
 		"i_images": images,
 	}
+	if room.Title != "" {
+		payload["title"] = room.Title
+	}
+	if room.Description != "" {
+		payload["description"] = room.Description
+	}
+	if room.Lat != nil && room.Lng != nil {
+		payload["lat"] = *room.Lat
+		payload["lng"] = *room.Lng
+	}
 	if withLayout {
 		payload["layout"] = room.Layout
 		for key, value := range room.Labels {

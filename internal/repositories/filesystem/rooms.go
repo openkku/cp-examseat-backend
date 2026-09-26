@@ -76,6 +76,10 @@ func LoadRoomCatalog(roomDir string, imageBaseURL string) models.RoomCatalog {
 			Images:      images,
 			Layout:      layoutFile["layout"],
 			Labels:      labels,
+			Title:       meta.Title,
+			Description: meta.Description,
+			Lat:         meta.Lat,
+			Lng:         meta.Lng,
 		}
 	}
 

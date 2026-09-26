@@ -71,6 +71,18 @@ script/            Python helpers (xlsx scraper, enrollment parser)
 docs/              API and environment reference
 ```
 
+## Operating it
+
+| Task | How |
+|------|-----|
+| Import a round | Admin page (`/admin` on the frontend), or `migrate` CLI then reload |
+| Reload after changing data or room files | Admin page "Reload", `POST /api/admin/reload`, or `kill -HUP <pid>` / `docker compose kill -s HUP backend` |
+| Back up | Automatic with `BACKUP_DIR`; on demand from the admin page or `go run ./cmd/migrate backup <file>` |
+| Deploy | Every push to `main` publishes `ghcr.io/openkku/cp-examseat-backend:latest` (and `:sha-…`, `:X.Y.Z` for `vX.Y.Z` tags); `docker compose pull && docker compose up -d` |
+
+The server needs no restart after an import: rounds, rooms, statistics and
+all response caches are refreshed on reload.
+
 ## Getting started
 
 ```bash
@@ -121,6 +133,10 @@ The image contains `server` and `migrate`; mount your data directory at `/app/da
 - Room images are served through `http.Dir`, which cannot leave `room/image/`.
 - The room-config tool listens on loopback only, rejects non-loopback `Host`
   headers, cross-site and non-JSON writes, and bodies over 1 MiB.
+- Every client IP is rate limited (default 10 req/s, burst 40); the client
+  address comes from `X-Forwarded-For` only via `TRUSTED_PROXIES`.
+- The admin API is off unless `ADMIN_TOKEN` is set, compares tokens in
+  constant time, and validates uploaded file types, sizes and IDs.
 - CI runs `govulncheck`, `gosec`, the race detector and fuzz tests for the
   parsers that handle untrusted input.
 

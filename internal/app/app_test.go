@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/klauspost/compress/gzip"
@@ -65,8 +66,12 @@ func newTestServer(t *testing.T, cfg config.Config) *httptest.Server {
 
 	srv := httptest.NewServer(application.Handler)
 	t.Cleanup(srv.Close)
+	dataDirs.Store(srv.URL, dataDir)
 	return srv
 }
+
+// dataDirs maps test server URLs to their data directory.
+var dataDirs sync.Map
 
 type response struct {
 	status  int

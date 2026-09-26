@@ -27,6 +27,10 @@ func main() {
 		runCustomMigrate(os.Args[2:])
 		return
 	}
+	if arg1 == "backup" {
+		runBackup(os.Args[2:])
+		return
+	}
 
 	// Legacy mode: go run ./cmd/migrate <FILE_PATH> <ROUND_ID> [DISPLAY_NAME]
 	if len(os.Args) < 3 {
@@ -95,6 +99,11 @@ func printUsage() {
 	fmt.Println("     go run ./cmd/migrate <FILE_PATH> <ROUND_ID> [DISPLAY_NAME]")
 	fmt.Println("     Example: go run ./cmd/migrate data/source/final_2_2568.xlsx 2_2568 \"Final Exam 2/2568\"")
 	fmt.Println("")
+	fmt.Println("   Backup (consistent snapshot, safe while the server runs):")
+	fmt.Println("     go run ./cmd/migrate backup <DEST_FILE>")
+	fmt.Println("")
+	fmt.Println("   After importing, reload the running server: POST /api/admin/reload or send it SIGHUP.")
+	fmt.Println("")
 	fmt.Println("   Custom Edge-Case Migration:")
 	fmt.Println("     go run ./cmd/migrate custom --file <PATH> --round <ROUND_ID> [--custom-id ID] [--labels L1,L2] [--room-layout LAYOUT]")
 	fmt.Println("     Example: go run ./cmd/migrate custom --file data/source/custom/Lab_2568_CP421024_OOP_CY_FinalExam_Sec1.pdf --round 2_2568 --custom-id FINAL_2_OOP_LAB_2026 --labels LAB,Lab --room-layout CP9421_LAB")
@@ -110,4 +119,21 @@ func ingest(opts services.IngestOptions) error {
 
 	_, err = services.NewIngestService(db).Ingest(context.Background(), opts)
 	return err
+}
+
+func runBackup(args []string) {
+	if len(args) != 1 {
+		printUsage()
+		os.Exit(1)
+	}
+	db, err := sqlite.New(config.Load().DatabasePath())
+	if err != nil {
+		log.Fatalf("❌ Backup failed: %v", err)
+	}
+	defer db.Close()
+
+	if err := db.Backup(context.Background(), args[0]); err != nil {
+		log.Fatalf("❌ Backup failed: %v", err)
+	}
+	fmt.Printf("✅ Backup written to %s\n", args[0])
 }

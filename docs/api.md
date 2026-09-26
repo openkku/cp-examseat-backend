@@ -15,6 +15,11 @@ deflate) according to `Accept-Encoding`.
 | `GET /api/stats` | `StatsController.Index` | Analytics dashboard |
 | `GET /api/room` | `RoomController.Index` | Room layouts and images |
 | `GET /room/image/*` | `RoomController.Image` | Room images from `$DATA_DIR/room/image` |
+| `/api/admin/*` | `AdminController` | Import and data management (see [Admin API](#admin-api)) |
+
+Every route except `/healthz` is rate limited per client; over the limit
+the API answers `429 {"error": "Too many requests, please slow down"}` with a
+`Retry-After` header (seconds).
 
 ---
 
@@ -133,7 +138,8 @@ Without `room`, every room with a loaded layout is returned.
 }
 ```
 
-`layout`, `frontLabel` and `backLabel` are omitted with `no_layout=true`
+`title`, `description`, `lat` and `lng` are included when set in
+`metadata.json`. `layout`, `frontLabel` and `backLabel` are omitted with `no_layout=true`
 (`frontLabel`/`backLabel` also when the layout file has none).
 
 | Status | Body |
@@ -145,3 +151,29 @@ Without `room`, every room with a loaded layout is returned.
 
 Serves `$DATA_DIR/room/image/{file}`; `404 Image not found` otherwise. Unused
 when `IMAGE_BASE_URL` points image URLs at a CDN.
+
+---
+
+## Admin API
+
+Enabled only when `ADMIN_TOKEN` is set; otherwise every `/api/admin` path is
+404. Every request needs `Authorization: Bearer <ADMIN_TOKEN>` (401
+otherwise). Changes are applied immediately: each write reloads rounds,
+rooms and statistics and clears the response caches. With `BACKUP_DIR` set,
+imports and deletes take a safety backup first.
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/admin/status` | `{rooms, rooms_configured, last_reload, backups_enabled, backups: [{name, size, created_at}], max_upload_mb}` |
+| `GET /api/admin/rounds` | `[{id, label, seats, students, in_schedule_seats, custom_datasets: [{id, seats}]}]` |
+| `PATCH /api/admin/rounds/{round}` | Rename: `{"label": "..."}` |
+| `DELETE /api/admin/rounds/{round}` | Delete a round and everything in it |
+| `DELETE /api/admin/rounds/{round}?custom_id=ID` | Delete one out-of-schedule dataset |
+| `POST /api/admin/import` | `multipart/form-data`: `file` (.xlsx, .xls, .pdf, .json), `round`, optional `display`, `labels` (comma-separated), `room_layout`, `custom_id`. Same replace semantics as `cmd/migrate`. Returns `{round, seats, reloaded_at}` |
+| `POST /api/admin/reload` | Reload data and room files from disk |
+| `POST /api/admin/backups` | Write a backup into `BACKUP_DIR` (409 if not configured) |
+| `GET /api/admin/backup` | Download a fresh snapshot of `exams.db` |
+
+IDs (`round`, `custom_id`, `room_layout`) may contain letters, digits, `_`
+and `-` (max 64). Import errors return 422 with the extractor's message;
+uploads over `MAX_UPLOAD_MB` return 413.

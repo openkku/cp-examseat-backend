@@ -72,3 +72,21 @@ func TestLoadRoomCatalogConfinesLayoutFiles(t *testing.T) {
 		t.Errorf("layout_file escaped map/: %+v", catalog.Rooms)
 	}
 }
+
+func TestLoadRoomCatalogLocation(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "metadata.json"), `{
+		"CP.9127": {"layout_file": "a.json", "title": "ห้องสอบ CP.9127", "description": "ชั้น 1", "lat": 16.4756, "lng": 102.8251},
+		"SC.1101": {"layout_file": "a.json"}
+	}`)
+	writeFile(t, filepath.Join(dir, "map", "a.json"), `{"layout": []}`)
+
+	c := LoadRoomCatalog(dir, "")
+	cp := c.Rooms["CP.9127"]
+	if cp.Title != "ห้องสอบ CP.9127" || cp.Description != "ชั้น 1" || cp.Lat == nil || *cp.Lat != 16.4756 || *cp.Lng != 102.8251 {
+		t.Errorf("location fields not loaded: %+v", cp)
+	}
+	if sc := c.Rooms["SC.1101"]; sc.Lat != nil || sc.Title != "" {
+		t.Errorf("rooms without location must leave fields unset: %+v", sc)
+	}
+}

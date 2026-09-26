@@ -23,8 +23,8 @@ FROM alpine:latest
 
 WORKDIR /app
 
-# Install certificates for external API calls
-RUN apk --no-cache add ca-certificates
+# Certificates for external calls; poppler-utils provides pdftotext for PDF imports
+RUN apk --no-cache add ca-certificates poppler-utils
 
 # Set the default data directory and port inside the container
 ENV DATA_DIR=/app/data \

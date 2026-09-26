@@ -2,9 +2,12 @@
 package config
 
 import (
+	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // Config holds every runtime setting of the backend.
@@ -18,6 +21,28 @@ type Config struct {
 	// CORSAllowedOrigins lists origins allowed to call the API cross-origin
 	// (CORS_ALLOWED_ORIGINS, comma-separated, "*" for any). Empty disables CORS headers.
 	CORSAllowedOrigins []string
+
+	// RateLimitRPS is the sustained request rate allowed per client IP
+	// (RATE_LIMIT_RPS, default 10; 0 disables rate limiting).
+	RateLimitRPS float64
+	// RateLimitBurst is the burst size per client IP (RATE_LIMIT_BURST, default 40).
+	RateLimitBurst int
+	// TrustedProxies lists IPs/CIDRs whose X-Forwarded-For header is trusted
+	// to identify the client (TRUSTED_PROXIES). "loopback" and "private" are
+	// shorthands; default "loopback,private" suits a backend behind the frontend.
+	TrustedProxies []string
+
+	// AdminToken enables the /api/admin API when set (ADMIN_TOKEN).
+	AdminToken string
+	// MaxUploadBytes bounds admin import uploads (MAX_UPLOAD_MB, default 20).
+	MaxUploadBytes int64
+
+	// BackupDir enables scheduled SQLite backups when set (BACKUP_DIR).
+	BackupDir string
+	// BackupInterval is the time between scheduled backups (BACKUP_INTERVAL, default 24h).
+	BackupInterval time.Duration
+	// BackupKeep is the number of scheduled backups kept (BACKUP_KEEP, default 7).
+	BackupKeep int
 }
 
 // Load reads the configuration from the environment, applying defaults.
@@ -27,6 +52,14 @@ func Load() Config {
 		DataDir:            GetDataDir(),
 		ImageBaseURL:       strings.TrimSuffix(os.Getenv("IMAGE_BASE_URL"), "/"),
 		CORSAllowedOrigins: splitList(os.Getenv("CORS_ALLOWED_ORIGINS")),
+		RateLimitRPS:       getFloat("RATE_LIMIT_RPS", 10),
+		RateLimitBurst:     getInt("RATE_LIMIT_BURST", 40),
+		TrustedProxies:     splitList(getEnv("TRUSTED_PROXIES", "loopback,private")),
+		AdminToken:         os.Getenv("ADMIN_TOKEN"),
+		MaxUploadBytes:     int64(getInt("MAX_UPLOAD_MB", 20)) << 20,
+		BackupDir:          os.Getenv("BACKUP_DIR"),
+		BackupInterval:     getDuration("BACKUP_INTERVAL", 24*time.Hour),
+		BackupKeep:         getInt("BACKUP_KEEP", 7),
 	}
 }
 
@@ -66,4 +99,43 @@ func splitList(raw string) []string {
 		}
 	}
 	return out
+}
+
+func getInt(key string, fallback int) int {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return fallback
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil || v < 0 {
+		log.Printf("⚠️ Invalid %s=%q, using %d", key, raw, fallback)
+		return fallback
+	}
+	return v
+}
+
+func getFloat(key string, fallback float64) float64 {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return fallback
+	}
+	v, err := strconv.ParseFloat(raw, 64)
+	if err != nil || v < 0 {
+		log.Printf("⚠️ Invalid %s=%q, using %g", key, raw, fallback)
+		return fallback
+	}
+	return v
+}
+
+func getDuration(key string, fallback time.Duration) time.Duration {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return fallback
+	}
+	v, err := time.ParseDuration(raw)
+	if err != nil || v <= 0 {
+		log.Printf("⚠️ Invalid %s=%q, using %s", key, raw, fallback)
+		return fallback
+	}
+	return v
 }
