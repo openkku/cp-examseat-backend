@@ -24,7 +24,7 @@ jobs:
           pip install openpyxl
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version-file: 'go.mod'
           cache: true
@@ -88,7 +88,7 @@ jobs:
         run: pip install openpyxl
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version-file: 'go.mod'
           cache: true
@@ -106,7 +106,7 @@ jobs:
       # Latest 1.26 patch release, so the scan reflects the toolchain we ship
       # (the Docker image builds with golang:1.26-alpine).
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: '1.26.x'
           cache: true
@@ -125,7 +125,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version-file: 'go.mod'
           cache: true
