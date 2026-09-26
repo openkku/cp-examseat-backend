@@ -1,18 +1,26 @@
 package sqlite
 
 import (
+	"context"
+	"fmt"
 	"log"
 )
 
-func (d *Database) migrate() {
-	d.db.Exec("PRAGMA foreign_keys = ON;")
+// migrate creates or upgrades the schema. It runs on one pinned connection
+// because the legacy upgrade toggles foreign_keys, a per-connection setting.
+func (d *Database) migrate(ctx context.Context) error {
+	conn, err := d.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to acquire connection for migration: %w", err)
+	}
+	defer conn.Close()
 
 	// Drop legacy flat exams table if it exists
-	d.db.Exec("DROP TABLE IF EXISTS exams;")
+	conn.ExecContext(ctx, "DROP TABLE IF EXISTS exams;")
 
 	// Check if exam_sessions has 'date' column. If not (old date_start schema), drop tables to recreate cleanly.
 	var hasDateCol bool
-	rows, err := d.db.Query("PRAGMA table_info(exam_sessions);")
+	rows, err := conn.QueryContext(ctx, "PRAGMA table_info(exam_sessions);")
 	if err == nil {
 		for rows.Next() {
 			var cid int
@@ -27,9 +35,9 @@ func (d *Database) migrate() {
 		}
 		rows.Close()
 		if !hasDateCol {
-			d.db.Exec("DROP TABLE IF EXISTS exam_seats;")
-			d.db.Exec("DROP TABLE IF EXISTS session_labels;")
-			d.db.Exec("DROP TABLE IF EXISTS exam_sessions;")
+			conn.ExecContext(ctx, "DROP TABLE IF EXISTS exam_seats;")
+			conn.ExecContext(ctx, "DROP TABLE IF EXISTS session_labels;")
+			conn.ExecContext(ctx, "DROP TABLE IF EXISTS exam_sessions;")
 		}
 	}
 
@@ -93,13 +101,13 @@ func (d *Database) migrate() {
     CREATE INDEX IF NOT EXISTS idx_seats_session ON exam_seats(session_id);
     `
 
-	if _, err := d.db.Exec(schema); err != nil {
-		log.Fatalf("❌ Error creating schema: %v", err)
+	if _, err := conn.ExecContext(ctx, schema); err != nil {
+		return fmt.Errorf("error creating schema: %w", err)
 	}
 
 	// Check if existing exam_sessions table has FK to round_info. If not, perform schema migration.
 	var hasFKToRoundInfo bool
-	fkRows, err := d.db.Query("PRAGMA foreign_key_list(exam_sessions);")
+	fkRows, err := conn.QueryContext(ctx, "PRAGMA foreign_key_list(exam_sessions);")
 	if err == nil {
 		for fkRows.Next() {
 			var id, seq int
@@ -115,10 +123,10 @@ func (d *Database) migrate() {
 
 	if !hasFKToRoundInfo {
 		// Populate round_info for any existing orphan exam_rounds if any
-		d.db.Exec("INSERT OR IGNORE INTO round_info (id, label) SELECT DISTINCT exam_round, exam_round FROM exam_sessions WHERE exam_round NOT IN (SELECT id FROM round_info);")
-		d.db.Exec("INSERT OR IGNORE INTO round_info (id, label) SELECT DISTINCT exam_round, exam_round FROM subjects WHERE exam_round NOT IN (SELECT id FROM round_info);")
+		conn.ExecContext(ctx, "INSERT OR IGNORE INTO round_info (id, label) SELECT DISTINCT exam_round, exam_round FROM exam_sessions WHERE exam_round NOT IN (SELECT id FROM round_info);")
+		conn.ExecContext(ctx, "INSERT OR IGNORE INTO round_info (id, label) SELECT DISTINCT exam_round, exam_round FROM subjects WHERE exam_round NOT IN (SELECT id FROM round_info);")
 
-		d.db.Exec("PRAGMA foreign_keys = OFF;")
+		conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF;")
 
 		migSQL := `
 			CREATE TABLE IF NOT EXISTS exam_sessions_new (
@@ -156,22 +164,11 @@ func (d *Database) migrate() {
 			ALTER TABLE subjects_new RENAME TO subjects;
 			CREATE INDEX IF NOT EXISTS idx_subjects_round ON subjects(exam_round);
 		`
-		if _, err := d.db.Exec(migSQL); err != nil {
+		if _, err := conn.ExecContext(ctx, migSQL); err != nil {
 			log.Printf("⚠️ Schema migration error: %v", err)
 		}
-		d.db.Exec("PRAGMA foreign_keys = ON;")
+		conn.ExecContext(ctx, "PRAGMA foreign_keys = ON;")
 	}
 
-	// Enable WAL mode and other optimizations
-	pragmas := []string{
-		"PRAGMA journal_mode=WAL;",
-		"PRAGMA synchronous=NORMAL;",
-		"PRAGMA temp_store=MEMORY;",
-		"PRAGMA busy_timeout=5000;",
-	}
-	for _, pragma := range pragmas {
-		if _, err := d.db.Exec(pragma); err != nil {
-			log.Printf("⚠️ Warning: Could not execute %q: %v", pragma, err)
-		}
-	}
+	return nil
 }

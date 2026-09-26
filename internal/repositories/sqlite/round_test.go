@@ -2,7 +2,9 @@ package sqlite_test
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/openkku/cp-examseat-backend/internal/models"
@@ -422,5 +424,53 @@ func TestGetOptionsWithoutRoomFilter(t *testing.T) {
 
 	if _, err := db.GetOptions(ctx, models.OptionsQuery{Mode: "bogus", Round: "r"}); err != models.ErrInvalidOptionMode {
 		t.Errorf("Expected ErrInvalidOptionMode, got %v", err)
+	}
+}
+
+func TestPurgeCascadesAcrossPooledConnections(t *testing.T) {
+	db, err := sqlite.New(filepath.Join(t.TempDir(), "cascade.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+
+	// Concurrent writers use several pooled connections, so the foreign key
+	// and busy-timeout settings must hold on each of them.
+	var wg sync.WaitGroup
+	errs := make(chan error, 64)
+	for w := 0; w < 8; w++ {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			round := fmt.Sprintf("r%d", w)
+			seats := []models.Seat{{StudentID: fmt.Sprint(w), Date: "2026-01-01", Time: "09.00-12.00", Room: "R", Subject: "S", CustomID: "LAB", Labels: []string{"Lab"}}}
+			for i := 0; i < 5; i++ {
+				if err := db.AddRound(ctx, round, "R", seats); err != nil {
+					errs <- err
+					return
+				}
+				if err := db.PurgeCustomDataset(ctx, round, "LAB"); err != nil {
+					errs <- err
+					return
+				}
+			}
+		}(w)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Errorf("concurrent write failed: %v", err)
+	}
+
+	var orphans, labels int
+	if err := db.RawQueryRow(ctx, "SELECT COUNT(*) FROM exam_seats WHERE session_id NOT IN (SELECT id FROM exam_sessions)").Scan(&orphans); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.RawQueryRow(ctx, "SELECT COUNT(*) FROM session_labels").Scan(&labels); err != nil {
+		t.Fatal(err)
+	}
+	if orphans != 0 || labels != 0 {
+		t.Errorf("purge left %d orphan seats and %d orphan labels (ON DELETE CASCADE not enforced)", orphans, labels)
 	}
 }

@@ -2,6 +2,7 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
@@ -28,17 +29,37 @@ func New(dbPath string) (*Database, error) {
 		return nil, fmt.Errorf("failed to create database directory: %w", err)
 	}
 
-	db, err := sql.Open("sqlite", dbPath)
+	// Connection settings go in the DSN so they apply to every pooled
+	// connection, not just the one that happened to run a PRAGMA: foreign keys
+	// (ON DELETE CASCADE), waiting on locks instead of failing, and
+	// IMMEDIATE transactions so concurrent writers queue instead of erroring
+	// with SQLITE_BUSY when upgrading a read lock.
+	dsn := "file:" + dbPath +
+		"?_pragma=foreign_keys(1)" +
+		"&_pragma=busy_timeout(5000)" +
+		"&_pragma=journal_mode(WAL)" +
+		"&_pragma=synchronous(NORMAL)" +
+		"&_pragma=temp_store(MEMORY)" +
+		"&_txlock=immediate"
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
 	d := &Database{db: db}
-	d.migrate()
+	if err := d.migrate(context.Background()); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return d, nil
 }
 
 // Close releases the database handle.
 func (d *Database) Close() error {
 	return d.db.Close()
+}
+
+// RawQueryRow runs a read-only diagnostic query (used by tests and admin tooling).
+func (d *Database) RawQueryRow(ctx context.Context, query string, args ...any) *sql.Row {
+	return d.db.QueryRowContext(ctx, query, args...)
 }

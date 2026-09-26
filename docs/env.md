@@ -9,6 +9,14 @@ This document describes the environment variables supported by the CP Exam Seat 
 | `IMAGE_BASE_URL` | *(empty)* | `cmd/server` |
 | `CORS_ALLOWED_ORIGINS` | *(empty)* | `cmd/server` |
 | `ROOM_CONFIG_ADDR` | `127.0.0.1:8081` | `cmd/room-config` |
+| `RATE_LIMIT_RPS` | `10` | `cmd/server` |
+| `RATE_LIMIT_BURST` | `40` | `cmd/server` |
+| `TRUSTED_PROXIES` | `loopback,private` | `cmd/server` |
+| `ADMIN_TOKEN` | *(empty)* | `cmd/server` |
+| `MAX_UPLOAD_MB` | `20` | `cmd/server` |
+| `BACKUP_DIR` | *(empty)* | `cmd/server` |
+| `BACKUP_INTERVAL` | `24h` | `cmd/server` |
+| `BACKUP_KEEP` | `7` | `cmd/server` |
 
 ---
 
@@ -74,6 +82,41 @@ CORS_ALLOWED_ORIGINS="https://exam.example.com,https://staging.example.com"
 Listen address of the room-config editor. It defaults to loopback because the
 tool writes files and has no authentication; it also refuses requests whose
 `Host` is not a loopback name (DNS rebinding) and cross-site writes (CSRF).
+
+---
+
+## 6. Rate limiting: `RATE_LIMIT_RPS`, `RATE_LIMIT_BURST`, `TRUSTED_PROXIES`
+
+Each client IP gets a token bucket refilled at `RATE_LIMIT_RPS` requests per
+second holding up to `RATE_LIMIT_BURST` requests; beyond that the API answers
+`429 Too Many Requests` with `Retry-After`. `RATE_LIMIT_RPS=0` disables it.
+`/healthz` is never limited.
+
+Behind the Next.js frontend every request arrives from the frontend's
+address, so the client is read from `X-Forwarded-For` — but only when the
+direct peer is listed in `TRUSTED_PROXIES` (IPs, CIDRs, or the shorthands
+`loopback` and `private`). A client talking to the backend directly cannot
+spoof its address. If the frontend reaches the backend over a public
+address, add that address here.
+
+---
+
+## 7. Admin API: `ADMIN_TOKEN`, `MAX_UPLOAD_MB`
+
+Setting `ADMIN_TOKEN` enables `/api/admin/*` (see [api.md](api.md#admin-api)),
+used by the frontend's `/admin` page. Requests must send
+`Authorization: Bearer <ADMIN_TOKEN>`. Use a long random value, e.g.
+`openssl rand -hex 32`. Uploads are capped at `MAX_UPLOAD_MB` megabytes.
+
+---
+
+## 8. Backups: `BACKUP_DIR`, `BACKUP_INTERVAL`, `BACKUP_KEEP`
+
+With `BACKUP_DIR` set the server writes a consistent snapshot of `exams.db`
+(`VACUUM INTO`) every `BACKUP_INTERVAL` (Go duration, e.g. `6h`) and before
+every admin import or delete, keeping the newest `BACKUP_KEEP` files named
+`exams-YYYYMMDD-HHMMSS.mmm.db`. Put it on a different volume from `DATA_DIR`.
+To restore, stop the server and copy a backup over `exams.db`.
 
 ---
 

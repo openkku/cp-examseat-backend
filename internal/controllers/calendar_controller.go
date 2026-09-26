@@ -37,6 +37,11 @@ func NewCalendarController(exams *services.ExamService) *CalendarController {
 	}
 }
 
+// ClearCache drops every cached feed (after the underlying data changed).
+func (c *CalendarController) ClearCache() {
+	c.feeds.InvalidateAll()
+}
+
 // Show handles GET /api/calendar/{id} and /api/calendar/{id}.ics.
 func (c *CalendarController) Show(w http.ResponseWriter, r *http.Request) {
 	// chi returns path parameters still percent-encoded.

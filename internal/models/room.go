@@ -6,6 +6,12 @@ type RoomMeta struct {
 	LayoutImage string   `json:"layout_image"`
 	MapURL      string   `json:"map_url"`
 	Images      []string `json:"images"`
+
+	// Optional display details shown on the room page and campus map.
+	Title       string   `json:"title,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Lat         *float64 `json:"lat,omitempty"`
+	Lng         *float64 `json:"lng,omitempty"`
 }
 
 // Room is an exam room whose seating layout was loaded successfully.
@@ -18,6 +24,10 @@ type Room struct {
 	Layout any
 	// Labels holds the optional "frontLabel"/"backLabel" entries of the map file.
 	Labels map[string]any
+
+	Title       string
+	Description string
+	Lat, Lng    *float64
 }
 
 // RoomCatalog is every room configured in room/metadata.json.

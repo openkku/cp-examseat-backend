@@ -39,6 +39,11 @@ func NewResponseCache(maxSize int, ttl time.Duration) *ResponseCache {
 	}
 }
 
+// Clear drops every cached response (after the underlying data changed).
+func (c *ResponseCache) Clear() {
+	c.store.InvalidateAll()
+}
+
 // RenderFunc produces the status and payload of a response on a cache miss.
 type RenderFunc func() (status int, payload any, err error)
 
