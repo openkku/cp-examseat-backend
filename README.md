@@ -78,7 +78,7 @@ docs/              API and environment reference
 | Import a round | Admin page (`/admin` on the frontend), or `migrate` CLI then reload |
 | Reload after changing data or room files | Admin page "Reload", `POST /api/admin/reload`, or `kill -HUP <pid>` / `docker compose kill -s HUP backend` |
 | Back up | Automatic with `BACKUP_DIR`; on demand from the admin page or `go run ./cmd/migrate backup <file>` |
-| Deploy | Every push to `main` publishes `ghcr.io/openkku/cp-examseat-backend:latest` (and `:sha-…`, `:X.Y.Z` for `vX.Y.Z` tags); `docker compose pull && docker compose up -d` |
+| Deploy | Every push to `main` publishes `ghcr.io/openkku/cp-examseat-backend:latest` (and `:sha-…`, `:X.Y.Z` for `vX.Y.Z` tags). The frontend repository's [`deploy/`](https://github.com/openkku/cp-examseat-frontend/tree/main/deploy) runs both images with HTTPS |
 
 The server needs no restart after an import: rounds, rooms, statistics and
 all response caches are refreshed on reload.
