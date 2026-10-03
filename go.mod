@@ -3,7 +3,7 @@ module github.com/openkku/cp-examseat-backend
 go 1.26.1
 
 require (
-	github.com/andybalholm/brotli v1.2.4
+	github.com/andybalholm/brotli v1.2.6
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/klauspost/compress v1.20.0
 	github.com/minoplhy/ikalendar v0.2.0
