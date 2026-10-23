@@ -67,7 +67,7 @@ func (h *Exam) Show(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, "ระบบกำลังดึงข้อมูล กรุณาลองใหม่อีกครั้ง", http.StatusServiceUnavailable)
 		return
 	case errors.Is(err, checkex.ErrUpstreamUnavailable):
-		httpx.Error(w, "ไม่สามารถติดต่อระบบคณะ (checkex.computing.kku.ac.th) ได้ในขณะนี้ กรุณาลองใหม่ภายหลัง", http.StatusServiceUnavailable)
+		httpx.Error(w, "ไม่สามารถติดต่อระบบ Checkex คณะได้ในขณะนี้ กรุณาลองใหม่ภายหลัง", http.StatusServiceUnavailable)
 		return
 	case err != nil:
 		httpx.Error(w, "Database Error", http.StatusInternalServerError)

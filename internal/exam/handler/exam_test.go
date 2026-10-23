@@ -54,13 +54,13 @@ func TestShowQueuedUsesScraplersRetryAfter(t *testing.T) {
 	}
 }
 
-func TestShowUnavailableSaysCheckexCannotBeReached(t *testing.T) {
+func TestShowUnavailableSaysTheFacultySystemCannotBeReached(t *testing.T) {
 	w := showExam(t, checkex.ErrUpstreamUnavailable)
 
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", w.Code)
 	}
-	if !strings.Contains(w.Body.String(), "checkex.computing.kku.ac.th") {
+	if !strings.Contains(w.Body.String(), "ไม่สามารถติดต่อระบบ Checkex") {
 		t.Errorf("body = %s", w.Body.String())
 	}
 }

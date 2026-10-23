@@ -152,7 +152,7 @@ docs/              API and environment reference
 | Reload after a change | Automatic: the operator app and `migrate` touch `$DATA_DIR/.reload` and the server reloads within 2s. After editing files by hand, `touch $DATA_DIR/.reload` or `kill -HUP <pid>` |
 | Back up | Not done by the app. Back up `$DATA_DIR/exams.db` at the infrastructure level, e.g. snapshot the data volume or run `sqlite3 exams.db ".backup /backups/exams-$(date +%F).db"` from the host on a schedule |
 | Deploy | Every push to `main` publishes `ghcr.io/openkku/cp-examseat-backend:latest` (and `:sha-…`, `:X.Y.Z` for `vX.Y.Z` tags). [openkku/cp-examseat-deployment](https://github.com/openkku/cp-examseat-deployment) runs it with the frontend, scrapler and the KKU VPN behind HTTPS |
-| Serve a checkex round | Set `CHECKEX_ROUNDS` (e.g. `final_1_2569`) and `SCRAPLER_URL`; seats are fetched on first lookup through [scrapler](https://github.com/openkku/akhsakov-scrapler). See [docs/env.md](docs/env.md#9-on-demand-lookup-from-checkex-checkex_-scrapler_url) |
+| Serve a checkex round | Set `CHECKEX_ROUNDS` (e.g. `final_1_2569`) and `SCRAPLER_URL`; seats are fetched on first lookup through [scrapler](https://github.com/openkku/cp-examseat-scrapler). See [docs/env.md](docs/env.md#9-on-demand-lookup-from-checkex-checkex_-scrapler_url) |
 
 The server needs no restart after a change: rounds, rooms, statistics and
 all response caches are refreshed on reload. There is no admin API: data is

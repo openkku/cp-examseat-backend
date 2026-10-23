@@ -1,6 +1,6 @@
 // Package scrapler is the client of the scrapler service
-// (github.com/openkku/akhsakov-scrapler), which runs next to the KKU VPN and
-// does the actual paced lookups on checkex.computing.kku.ac.th.
+// (github.com/openkku/cp-examseat-scrapler), which runs next to the KKU VPN and
+// does the actual paced lookups on the exam site
 package scrapler
 
 import (

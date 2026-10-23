@@ -153,7 +153,7 @@ backend fetches a student's seats the first time someone looks them up,
 stores them in `exams.db` and serves them from the database after that.
 
 The scraping itself runs in a separate service, **scrapler**
-([openkku/akhsakov-scrapler](https://github.com/openkku/akhsakov-scrapler)),
+([openkku/cp-examseat-scrapler](https://github.com/openkku/cp-examseat-scrapler)),
 which sits in the VPN's network namespace. scrapler owns the upstream pacing,
 the lookup queue and the back-off; the backend owns the database cache, the
 round list, the ID policy and the per-visitor not-found limit. The whole
@@ -186,8 +186,8 @@ Behaviour:
   The lookup keeps running in scrapler and the retry stores its answer.
   Identical concurrent lookups share one call.
 - **checkex unreachable:** when scrapler answers `unavailable` (a hub with no
-  healthy agent), `/api/exam` returns `503` with a message saying checkex
-  can't be reached. Nothing was queued; students already in the database are
+  healthy agent), `/api/exam` returns `503` with a message saying the
+  faculty's Checkex system can't be reached (without its address). Nothing was queued; students already in the database are
   unaffected. Deploy this backend before a scrapler that can send
   `unavailable`: older backends show a generic error for it.
 - **Per-visitor limit:** real students look up IDs that exist, while scripts
