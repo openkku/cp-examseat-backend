@@ -52,3 +52,14 @@ func TestIngestReplacesOnlyCustomDatasets(t *testing.T) {
 		t.Errorf("repo = %+v", repo)
 	}
 }
+
+func TestIngestRejectsCommaInLabel(t *testing.T) {
+	repo := &fakeRepo{}
+	seats := fakeExtractor{{StudentID: "1", Labels: []string{"ok", "a,b"}}}
+	if _, err := NewService(repo, seats).Ingest(context.Background(), Options{RoundID: "r"}); err == nil {
+		t.Fatal("expected an error for a label containing a comma")
+	}
+	if repo.purgedRound != "" || len(repo.purgedDatasets) != 0 || repo.added != 0 {
+		t.Errorf("rejected import touched the repository: %+v", repo)
+	}
+}

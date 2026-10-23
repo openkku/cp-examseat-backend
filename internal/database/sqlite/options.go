@@ -1,4 +1,4 @@
-package database
+package sqlite
 
 import (
 	"context"
@@ -7,11 +7,11 @@ import (
 )
 
 // GetOptions lists the distinct dates, times or rooms of a round for the explorer filters.
-func (r *Repo) GetOptions(ctx context.Context, opts exam.OptionsQuery) ([]string, error) {
+func (d *DB) GetOptions(ctx context.Context, opts exam.OptionsQuery) ([]string, error) {
 	switch opts.Mode {
 	case exam.OptionDates:
 		query := "SELECT DISTINCT date, room FROM exam_sessions WHERE exam_round = ? ORDER BY date"
-		rows, err := r.db.SQL().QueryContext(ctx, query, opts.Round)
+		rows, err := d.db.QueryContext(ctx, query, opts.Round)
 		if err != nil {
 			return nil, err
 		}
@@ -32,11 +32,14 @@ func (r *Repo) GetOptions(ctx context.Context, opts exam.OptionsQuery) ([]string
 				result = append(result, dateVal)
 			}
 		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
 		return result, nil
 
 	case exam.OptionTimes:
 		query := "SELECT DISTINCT time_start, time_end, room FROM exam_sessions WHERE exam_round = ? AND date = ? ORDER BY time_start"
-		rows, err := r.db.SQL().QueryContext(ctx, query, opts.Round, opts.Date)
+		rows, err := d.db.QueryContext(ctx, query, opts.Round, opts.Date)
 		if err != nil {
 			return nil, err
 		}
@@ -61,11 +64,14 @@ func (r *Repo) GetOptions(ctx context.Context, opts exam.OptionsQuery) ([]string
 				result = append(result, timeStr)
 			}
 		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
 		return result, nil
 
 	case exam.OptionRooms:
 		query := "SELECT DISTINCT room FROM exam_sessions WHERE exam_round = ? AND (date = ? OR ? = '') AND (time_start = ? OR (time_start || '-' || COALESCE(time_end, '')) = ? OR ? = '') ORDER BY room"
-		rows, err := r.db.SQL().QueryContext(ctx, query, opts.Round, opts.Date, opts.Date, opts.Time, opts.Time, opts.Time)
+		rows, err := d.db.QueryContext(ctx, query, opts.Round, opts.Date, opts.Date, opts.Time, opts.Time, opts.Time)
 		if err != nil {
 			return nil, err
 		}
@@ -81,6 +87,9 @@ func (r *Repo) GetOptions(ctx context.Context, opts exam.OptionsQuery) ([]string
 				continue
 			}
 			result = append(result, roomVal)
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
 		}
 		return result, nil
 

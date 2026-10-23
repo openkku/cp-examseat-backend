@@ -6,12 +6,13 @@ import (
 	"testing"
 
 	"github.com/openkku/cp-examseat-backend/internal/checkex"
+	"github.com/openkku/cp-examseat-backend/internal/database/sqlite"
 	"github.com/openkku/cp-examseat-backend/internal/exam"
 	"github.com/openkku/cp-examseat-backend/internal/shared/domain"
 )
 
 func TestAddStudentSeatsSharesSessions(t *testing.T) {
-	db, err := open(filepath.Join(t.TempDir(), "test.db"))
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +79,7 @@ func TestAddStudentSeatsSharesSessions(t *testing.T) {
 }
 
 func TestAddStudentSeatsIgnoresCustomDatasets(t *testing.T) {
-	db, err := open(filepath.Join(t.TempDir(), "test.db"))
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

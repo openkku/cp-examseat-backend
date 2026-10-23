@@ -4,37 +4,13 @@ package roomconfig
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/openkku/cp-examseat-backend/internal/room"
 )
 
-// ErrRoomNotFound is returned when deleting a room absent from the metadata.
-var ErrRoomNotFound = errors.New("room not found")
-
-// ErrMetadataNotFound is returned when the metadata does not exist yet.
-var ErrMetadataNotFound = errors.New("metadata config file not found")
-
-// ErrInvalidLayout is returned by SaveLayout for a body that is not a JSON object.
-var ErrInvalidLayout = errors.New("invalid layout JSON")
-
 // emptyLayout is written for new rooms and returned for missing layout files.
 var emptyLayout = []byte(`{"layout": []}`)
-
-// Store reads and writes the stored room configuration. Layout file names may
-// contain directory components; the store confines them to its layout folder.
-type Store interface {
-	// RawMetadata returns the metadata as stored; exists is false when there is none.
-	RawMetadata() (data []byte, exists bool, err error)
-	// ReadMetadata returns the metadata entries; it fails when there is none.
-	ReadMetadata() (map[string]room.Meta, error)
-	WriteMetadata(config map[string]room.Meta) error
-	// ReadLayout returns a layout file; exists is false when there is none.
-	ReadLayout(filename string) (data []byte, exists bool, err error)
-	WriteLayout(filename string, data []byte) error
-	RemoveLayout(filename string) error
-}
 
 // Service implements the room-config use cases.
 type Service struct {

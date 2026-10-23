@@ -7,13 +7,14 @@ import (
 	"testing"
 
 	"github.com/openkku/cp-examseat-backend/internal/admin"
+	"github.com/openkku/cp-examseat-backend/internal/database/sqlite"
 	"github.com/openkku/cp-examseat-backend/internal/shared/domain"
 )
 
-func seedAdmin(t *testing.T) (*testDB, string) {
+func seedAdmin(t *testing.T) (*sqlite.DB, string) {
 	t.Helper()
 	dir := t.TempDir()
-	db, err := open(filepath.Join(dir, "admin.db"))
+	db, err := sqlite.Open(filepath.Join(dir, "admin.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,4 +1,4 @@
-package database
+package sqlite
 
 import (
 	"context"
@@ -9,12 +9,12 @@ import (
 	"github.com/openkku/cp-examseat-backend/internal/shared/domain"
 )
 
-// SeatSelect selects every column scanned by ScanSeats.
-const SeatSelect = `
+// seatSelect selects every column scanned by scanSeats.
+const seatSelect = `
         SELECT
             es.sheet, es.date, es.time_start, COALESCE(es.time_end, ''), es.room, es.subject_id, es.section, st_seat.student_id, st_seat.seat, es.note,
             COALESCE(sub.name, '') as subject_name, es.exam_round, COALESCE(st.branch, '') as branch,
-            COALESCE((SELECT GROUP_CONCAT(label, ',') FROM session_labels WHERE session_id = es.id), '') as labels,
+            COALESCE((SELECT GROUP_CONCAT(label, ',' ORDER BY label) FROM session_labels WHERE session_id = es.id), '') as labels,
             COALESCE(es.room_layout, '') as room_layout, COALESCE(es.custom_id, '') as custom_id, COALESCE(es.category, '') as category
         FROM exam_seats st_seat
         JOIN exam_sessions es ON st_seat.session_id = es.id
@@ -22,8 +22,8 @@ const SeatSelect = `
         LEFT JOIN subjects sub ON es.subject_id = sub.id AND es.exam_round = sub.exam_round
 `
 
-// ScanSeats reads rows selected with SeatSelect.
-func ScanSeats(rows *sql.Rows) ([]domain.Seat, error) {
+// scanSeats reads rows selected with seatSelect.
+func scanSeats(rows *sql.Rows) ([]domain.Seat, error) {
 	var seats []domain.Seat
 	for rows.Next() {
 		var s domain.Seat
@@ -62,14 +62,14 @@ func ScanSeats(rows *sql.Rows) ([]domain.Seat, error) {
 	return seats, nil
 }
 
-// Rounds lists every round, newest first.
-func Rounds(ctx context.Context, db *sql.DB) ([]domain.Round, error) {
+// rounds lists every round, newest first.
+func (d *DB) rounds(ctx context.Context) ([]domain.Round, error) {
 	query := `
 		SELECT id, label 
 		FROM round_info 
 		ORDER BY rowid DESC
 	`
-	rows, err := db.QueryContext(ctx, query)
+	rows, err := d.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query rounds: %w", err)
 	}
@@ -82,6 +82,9 @@ func Rounds(ctx context.Context, db *sql.DB) ([]domain.Round, error) {
 			return nil, fmt.Errorf("failed to scan round: %w", err)
 		}
 		rounds = append(rounds, ro)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to query rounds: %w", err)
 	}
 
 	sort.Slice(rounds, func(i, j int) bool {

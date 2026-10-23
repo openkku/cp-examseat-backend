@@ -17,22 +17,6 @@ import (
 // flightTimeout bounds one shared upstream call.
 const flightTimeout = 30 * time.Second
 
-// Options configures on-demand lookups from checkex.
-type Options struct {
-	// Rounds served by checkex; empty disables the feature.
-	Rounds []string
-	// RoundLabels overrides the derived display label per round ID.
-	RoundLabels map[string]string
-	// IDPrefixes are the intake years whose 10-digit IDs may be sent upstream.
-	IDPrefixes []string
-	// NotFoundTTL is how long a "not found" answer is trusted.
-	NotFoundTTL time.Duration
-	// NotFoundLimit is the not-found answers one visitor may cause per
-	// NotFoundWindow; 0 disables the limit.
-	NotFoundLimit  int
-	NotFoundWindow time.Duration
-}
-
 // Service makes sure a student's seats for a checkex-backed round are
 // in the database, fetching them through scrapler at most once. A nil
 // *Service is valid and does nothing.

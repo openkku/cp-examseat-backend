@@ -1,30 +1,16 @@
-// Package database reads seats, rosters and explorer options from the SQL database.
-package database
+package sqlite
 
 import (
 	"context"
 	"fmt"
 
 	"github.com/openkku/cp-examseat-backend/internal/exam"
-	platformdb "github.com/openkku/cp-examseat-backend/internal/platform/database"
 	"github.com/openkku/cp-examseat-backend/internal/shared/domain"
 )
 
-// Repo implements exam.Repository.
-type Repo struct {
-	db *platformdb.DB
-}
-
-var _ exam.Repository = (*Repo)(nil)
-
-// New creates a Repo on db.
-func New(db *platformdb.DB) *Repo {
-	return &Repo{db: db}
-}
-
 // GetSeatsByID returns every seat of one student ordered by date and start time.
-func (r *Repo) GetSeatsByID(ctx context.Context, opts domain.SeatQuery) ([]domain.Seat, error) {
-	query := platformdb.SeatSelect + " WHERE st_seat.student_id = ?"
+func (d *DB) GetSeatsByID(ctx context.Context, opts domain.SeatQuery) ([]domain.Seat, error) {
+	query := seatSelect + " WHERE st_seat.student_id = ?"
 	args := []any{opts.StudentID}
 
 	if opts.Round != nil {
@@ -39,18 +25,18 @@ func (r *Repo) GetSeatsByID(ctx context.Context, opts domain.SeatQuery) ([]domai
 
 	query += " ORDER BY es.date ASC, es.time_start ASC"
 
-	rows, err := r.db.SQL().QueryContext(ctx, query, args...)
+	rows, err := d.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("error querying seats: %w", err)
 	}
 	defer rows.Close()
 
-	return platformdb.ScanSeats(rows)
+	return scanSeats(rows)
 }
 
 // GetSeats returns the roster of one room and exam slot ordered by seat.
-func (r *Repo) GetSeats(ctx context.Context, opts exam.ExploreQuery) ([]domain.Seat, error) {
-	query := platformdb.SeatSelect + " WHERE es.exam_round = ? AND es.room = ? AND (es.date = ? OR ? = '')"
+func (d *DB) GetSeats(ctx context.Context, opts exam.ExploreQuery) ([]domain.Seat, error) {
+	query := seatSelect + " WHERE es.exam_round = ? AND es.room = ? AND (es.date = ? OR ? = '')"
 	args := []any{opts.Round, opts.Room, opts.Date, opts.Date}
 
 	if opts.Time != "" {
@@ -65,11 +51,11 @@ func (r *Repo) GetSeats(ctx context.Context, opts exam.ExploreQuery) ([]domain.S
 
 	query += " ORDER BY st_seat.seat ASC"
 
-	rows, err := r.db.SQL().QueryContext(ctx, query, args...)
+	rows, err := d.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("error querying seats: %w", err)
 	}
 	defer rows.Close()
 
-	return platformdb.ScanSeats(rows)
+	return scanSeats(rows)
 }

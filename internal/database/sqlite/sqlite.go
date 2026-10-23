@@ -1,6 +1,7 @@
-// Package sqlite is the SQLite engine: it opens exams.db with the modernc
-// driver, applies the connection settings and migrates the schema. It is the
-// only package that knows the database is SQLite.
+// Package sqlite stores everything in SQLite: it opens exams.db with the
+// modernc driver, migrates the schema and implements the repository port of
+// every slice. It is the only package that knows SQL or the schema; another
+// engine would be a sibling package implementing the same ports.
 package sqlite
 
 import (
@@ -10,13 +11,11 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/openkku/cp-examseat-backend/internal/platform/database"
-
 	_ "modernc.org/sqlite"
 )
 
 // Open opens (creating if needed) the database at dbPath and migrates its schema.
-func Open(dbPath string) (*database.DB, error) {
+func Open(dbPath string) (*DB, error) {
 	// Ensure parent directory exists
 	dir := filepath.Dir(dbPath)
 	// exams.db holds student data: keep its directory private to the owner and group.
@@ -45,5 +44,5 @@ func Open(dbPath string) (*database.DB, error) {
 		db.Close()
 		return nil, err
 	}
-	return database.New(db), nil
+	return &DB{db: db}, nil
 }

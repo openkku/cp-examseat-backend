@@ -10,11 +10,6 @@ import (
 	"github.com/openkku/cp-examseat-backend/internal/shared/domain"
 )
 
-// Repository reads the stored rounds.
-type Repository interface {
-	GetRounds(ctx context.Context) ([]domain.Round, error)
-}
-
 // Service caches the rounds of a Repository.
 type Service struct {
 	repo   Repository

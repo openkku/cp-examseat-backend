@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/openkku/cp-examseat-backend/internal/database/sqlite"
 	"github.com/openkku/cp-examseat-backend/internal/exam"
 	"github.com/openkku/cp-examseat-backend/internal/shared/domain"
 )
@@ -15,7 +16,7 @@ func TestMultiLabelAndCustomIDPurge(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 
-	db, err := open(dbPath)
+	db, err := sqlite.Open(dbPath)
 	if err != nil {
 		t.Fatalf("Failed to create sqlite DB: %v", err)
 	}
@@ -113,7 +114,7 @@ func TestGetOptionsCascadeFilter(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test_options.db")
 
-	db, err := open(dbPath)
+	db, err := sqlite.Open(dbPath)
 	if err != nil {
 		t.Fatalf("Failed to create database: %v", err)
 	}
@@ -189,7 +190,7 @@ func TestInVsOutOfScheduleCategory(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test_cat.db")
 
-	db, err := open(dbPath)
+	db, err := sqlite.Open(dbPath)
 	if err != nil {
 		t.Fatalf("Failed to create database: %v", err)
 	}
@@ -247,7 +248,7 @@ func TestPurgeRoundPreservesCustomSessions(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test_purge.db")
 
-	db, err := open(dbPath)
+	db, err := sqlite.Open(dbPath)
 	if err != nil {
 		t.Fatalf("Failed to create database: %v", err)
 	}
@@ -306,7 +307,7 @@ func TestGetSeatsFilterCombination(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test_filter.db")
 
-	db, err := open(dbPath)
+	db, err := sqlite.Open(dbPath)
 	if err != nil {
 		t.Fatalf("Failed to create database: %v", err)
 	}
@@ -361,7 +362,7 @@ func TestForeignKeyConstraints(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test_fk.db")
 
-	db, err := open(dbPath)
+	db, err := sqlite.Open(dbPath)
 	if err != nil {
 		t.Fatalf("Failed to create database: %v", err)
 	}
@@ -400,7 +401,7 @@ func TestForeignKeyConstraints(t *testing.T) {
 }
 
 func TestGetOptionsWithoutRoomFilter(t *testing.T) {
-	db, err := open(filepath.Join(t.TempDir(), "test_nofilter.db"))
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "test_nofilter.db"))
 	if err != nil {
 		t.Fatalf("Failed to create database: %v", err)
 	}
@@ -428,7 +429,7 @@ func TestGetOptionsWithoutRoomFilter(t *testing.T) {
 }
 
 func TestPurgeCascadesAcrossPooledConnections(t *testing.T) {
-	db, err := open(filepath.Join(t.TempDir(), "cascade.db"))
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "cascade.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -472,5 +473,29 @@ func TestPurgeCascadesAcrossPooledConnections(t *testing.T) {
 	}
 	if orphans != 0 || labels != 0 {
 		t.Errorf("purge left %d orphan seats and %d orphan labels (ON DELETE CASCADE not enforced)", orphans, labels)
+	}
+}
+
+func TestLabelsReadBackSorted(t *testing.T) {
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "labels.db"))
+	if err != nil {
+		t.Fatalf("Failed to create database: %v", err)
+	}
+	defer db.Close()
+
+	ctx := context.Background()
+	seats := []domain.Seat{
+		{ExamRound: "r", StudentID: "1", Date: "2026-08-23", Time: "13.00-16.00", Room: "R", Subject: "CP1", Labels: []string{"b", "c", "a"}},
+	}
+	if err := db.AddRound(ctx, "r", "R", seats); err != nil {
+		t.Fatalf("AddRound failed: %v", err)
+	}
+
+	got, err := db.GetSeatsByID(ctx, domain.SeatQuery{StudentID: "1"})
+	if err != nil {
+		t.Fatalf("GetSeatsByID failed: %v", err)
+	}
+	if len(got) != 1 || fmt.Sprint(got[0].Labels) != "[a b c]" {
+		t.Errorf("Expected labels [a b c], got %+v", got)
 	}
 }

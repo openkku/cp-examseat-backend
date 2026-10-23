@@ -1,5 +1,4 @@
-// Package database stores checkex lookups and the seats they fetched in the SQL database.
-package database
+package sqlite
 
 import (
 	"context"
@@ -10,26 +9,13 @@ import (
 	"time"
 
 	"github.com/openkku/cp-examseat-backend/internal/checkex"
-	platformdb "github.com/openkku/cp-examseat-backend/internal/platform/database"
 	"github.com/openkku/cp-examseat-backend/internal/shared/domain"
 )
 
-// Repo implements checkex.Repository.
-type Repo struct {
-	db *platformdb.DB
-}
-
-var _ checkex.Repository = (*Repo)(nil)
-
-// New creates a Repo on db.
-func New(db *platformdb.DB) *Repo {
-	return &Repo{db: db}
-}
-
 // HasRegularSeats reports whether the student has seats in the round outside custom datasets.
-func (r *Repo) HasRegularSeats(ctx context.Context, roundID string, studentID string) (bool, error) {
+func (d *DB) HasRegularSeats(ctx context.Context, roundID string, studentID string) (bool, error) {
 	var n int
-	if err := r.db.SQL().QueryRowContext(ctx, regularSeatCount, roundID, studentID).Scan(&n); err != nil {
+	if err := d.db.QueryRowContext(ctx, regularSeatCount, roundID, studentID).Scan(&n); err != nil {
 		return false, fmt.Errorf("failed to check existing seats: %w", err)
 	}
 	return n > 0, nil
@@ -41,8 +27,8 @@ const regularSeatCount = `
 		WHERE es.exam_round = ? AND st.student_id = ? AND COALESCE(es.custom_id, '') = ''`
 
 // EnsureRound creates the round if it does not exist yet, keeping an existing label.
-func (r *Repo) EnsureRound(ctx context.Context, roundID string, displayName string) error {
-	if _, err := r.db.SQL().ExecContext(ctx, "INSERT OR IGNORE INTO round_info (id, label) VALUES (?, ?)", roundID, displayName); err != nil {
+func (d *DB) EnsureRound(ctx context.Context, roundID string, displayName string) error {
+	if _, err := d.db.ExecContext(ctx, "INSERT OR IGNORE INTO round_info (id, label) VALUES (?, ?)", roundID, displayName); err != nil {
 		return fmt.Errorf("failed to ensure round: %w", err)
 	}
 	return nil
@@ -52,8 +38,8 @@ func (r *Repo) EnsureRound(ctx context.Context, roundID string, displayName stri
 // sessions already in the database, so students fetched one at a time still share a session.
 // It is a no-op (besides marking the lookup) if the student already has seats in the round,
 // not counting custom datasets.
-func (r *Repo) AddStudentSeats(ctx context.Context, roundID string, studentID string, seats []domain.Seat) error {
-	tx, err := r.db.SQL().BeginTx(ctx, nil)
+func (d *DB) AddStudentSeats(ctx context.Context, roundID string, studentID string, seats []domain.Seat) error {
+	tx, err := d.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -134,10 +120,10 @@ func addStudentSeat(ctx context.Context, tx *sql.Tx, roundID string, studentID s
 }
 
 // GetLookup returns the recorded upstream lookup, or nil when there is none.
-func (r *Repo) GetLookup(ctx context.Context, roundID string, studentID string) (*checkex.Lookup, error) {
+func (d *DB) GetLookup(ctx context.Context, roundID string, studentID string) (*checkex.Lookup, error) {
 	var status string
 	var fetchedAt int64
-	err := r.db.SQL().QueryRowContext(ctx, "SELECT status, fetched_at FROM upstream_lookups WHERE exam_round = ? AND student_id = ?", roundID, studentID).Scan(&status, &fetchedAt)
+	err := d.db.QueryRowContext(ctx, "SELECT status, fetched_at FROM upstream_lookups WHERE exam_round = ? AND student_id = ?", roundID, studentID).Scan(&status, &fetchedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -148,8 +134,8 @@ func (r *Repo) GetLookup(ctx context.Context, roundID string, studentID string) 
 }
 
 // MarkNotFound records that checkex has no seats for the student in the round.
-func (r *Repo) MarkNotFound(ctx context.Context, roundID string, studentID string) error {
-	tx, err := r.db.SQL().BeginTx(ctx, nil)
+func (d *DB) MarkNotFound(ctx context.Context, roundID string, studentID string) error {
+	tx, err := d.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}

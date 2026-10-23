@@ -11,10 +11,7 @@ import (
 	"time"
 
 	"github.com/openkku/cp-examseat-backend/internal/checkex"
-	checkexdb "github.com/openkku/cp-examseat-backend/internal/checkex/database"
-	examdb "github.com/openkku/cp-examseat-backend/internal/exam/database"
-	ingestdb "github.com/openkku/cp-examseat-backend/internal/ingest/database"
-	"github.com/openkku/cp-examseat-backend/internal/platform/database/sqlite"
+	"github.com/openkku/cp-examseat-backend/internal/database/sqlite"
 	"github.com/openkku/cp-examseat-backend/internal/shared/domain"
 )
 
@@ -47,18 +44,7 @@ func found(ctx context.Context, round, studentID, client string) ([]domain.Seat,
 
 func id(n int) string { return fmt.Sprintf("68338%05d", n) }
 
-// testDB is the database behind a test service, with every repository the tests use.
-type testDB struct {
-	*checkexdb.Repo
-	seats  *examdb.Repo
-	ingest *ingestdb.Repo
-}
-
-func (db testDB) AddRound(ctx context.Context, roundID, label string, seats []domain.Seat) error {
-	return db.ingest.AddRound(ctx, roundID, label, seats)
-}
-
-func testCheckex(t *testing.T, opts checkex.Options, lookup lookupFunc) (*checkex.Service, testDB) {
+func testCheckex(t *testing.T, opts checkex.Options, lookup lookupFunc) (*checkex.Service, *sqlite.DB) {
 	t.Helper()
 	db, err := sqlite.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
@@ -68,18 +54,17 @@ func testCheckex(t *testing.T, opts checkex.Options, lookup lookupFunc) (*checke
 	opts.Rounds = []string{testRound}
 	opts.IDPrefixes = []string{"68", "69"}
 	opts.NotFoundTTL = time.Hour
-	repo := testDB{Repo: checkexdb.New(db), seats: examdb.New(db), ingest: ingestdb.New(db)}
-	s := checkex.New(opts, repo, lookup)
+	s := checkex.New(opts, db, lookup)
 	if err := s.RegisterRounds(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	return s, repo
+	return s, db
 }
 
-func storedSeats(t *testing.T, db testDB, studentID string) []domain.Seat {
+func storedSeats(t *testing.T, db *sqlite.DB, studentID string) []domain.Seat {
 	t.Helper()
 	round := testRound
-	seats, err := db.seats.GetSeatsByID(context.Background(), domain.SeatQuery{StudentID: studentID, Round: &round})
+	seats, err := db.GetSeatsByID(context.Background(), domain.SeatQuery{StudentID: studentID, Round: &round})
 	if err != nil {
 		t.Fatal(err)
 	}

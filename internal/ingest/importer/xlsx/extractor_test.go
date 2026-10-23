@@ -11,9 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	ingestdb "github.com/openkku/cp-examseat-backend/internal/ingest/database"
-	platformdb "github.com/openkku/cp-examseat-backend/internal/platform/database"
-	"github.com/openkku/cp-examseat-backend/internal/platform/database/sqlite"
+	"github.com/openkku/cp-examseat-backend/internal/database/sqlite"
 	"github.com/openkku/cp-examseat-backend/internal/shared/domain"
 
 	"github.com/xuri/excelize/v2"
@@ -22,17 +20,16 @@ import (
 
 // extractAndMigrate replaces a round with the seats of an Excel file, like an
 // in-schedule import does.
-func extractAndMigrate(db *platformdb.DB, filePath, roundID, displayName string) error {
+func extractAndMigrate(db *sqlite.DB, filePath, roundID, displayName string) error {
 	seats, err := ExtractSeats(filePath, roundID, nil, "", "")
 	if err != nil {
 		return err
 	}
 	ctx := context.Background()
-	repo := ingestdb.New(db)
-	if err := repo.PurgeRound(ctx, roundID); err != nil {
+	if err := db.PurgeRound(ctx, roundID); err != nil {
 		return err
 	}
-	return repo.AddRound(ctx, roundID, displayName, seats)
+	return db.AddRound(ctx, roundID, displayName, seats)
 }
 
 // RawPythonEntry matches the JSON output structure of xslx_scrapler.py

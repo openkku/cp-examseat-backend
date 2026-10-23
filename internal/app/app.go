@@ -10,30 +10,23 @@ import (
 	"time"
 
 	"github.com/openkku/cp-examseat-backend/internal/admin"
-	admindb "github.com/openkku/cp-examseat-backend/internal/admin/database"
 	adminhandler "github.com/openkku/cp-examseat-backend/internal/admin/handler"
 	"github.com/openkku/cp-examseat-backend/internal/checkex"
-	checkexdb "github.com/openkku/cp-examseat-backend/internal/checkex/database"
 	"github.com/openkku/cp-examseat-backend/internal/checkex/scrapler"
 	"github.com/openkku/cp-examseat-backend/internal/config"
+	"github.com/openkku/cp-examseat-backend/internal/database/sqlite"
 	"github.com/openkku/cp-examseat-backend/internal/exam"
-	examdb "github.com/openkku/cp-examseat-backend/internal/exam/database"
 	examhandler "github.com/openkku/cp-examseat-backend/internal/exam/handler"
 	"github.com/openkku/cp-examseat-backend/internal/ingest"
-	ingestdb "github.com/openkku/cp-examseat-backend/internal/ingest/database"
 	"github.com/openkku/cp-examseat-backend/internal/ingest/importer"
-	platformdb "github.com/openkku/cp-examseat-backend/internal/platform/database"
-	"github.com/openkku/cp-examseat-backend/internal/platform/database/sqlite"
 	"github.com/openkku/cp-examseat-backend/internal/platform/middleware"
 	"github.com/openkku/cp-examseat-backend/internal/room"
 	roomfs "github.com/openkku/cp-examseat-backend/internal/room/filesystem"
 	roomhandler "github.com/openkku/cp-examseat-backend/internal/room/handler"
 	"github.com/openkku/cp-examseat-backend/internal/round"
-	rounddb "github.com/openkku/cp-examseat-backend/internal/round/database"
 	roundhandler "github.com/openkku/cp-examseat-backend/internal/round/handler"
 	"github.com/openkku/cp-examseat-backend/internal/shared/httpx"
 	"github.com/openkku/cp-examseat-backend/internal/stats"
-	statsdb "github.com/openkku/cp-examseat-backend/internal/stats/database"
 	statshandler "github.com/openkku/cp-examseat-backend/internal/stats/handler"
 )
 
@@ -41,7 +34,7 @@ import (
 type App struct {
 	Handler http.Handler
 
-	db      *platformdb.DB
+	db      *sqlite.DB
 	rounds  *round.Service
 	stats   *stats.Service
 	rooms   *room.Service
@@ -62,8 +55,8 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 
 	a := &App{
 		db:     db,
-		rounds: round.NewService(rounddb.New(db)),
-		stats:  stats.NewService(statsdb.New(db)),
+		rounds: round.NewService(db),
+		stats:  stats.NewService(db),
 		rooms:  room.NewService(roomfs.Loader{RoomDir: cfg.RoomDir(), ImageBaseURL: cfg.ImageBaseURL}),
 		// On-demand lookups from checkex for CHECKEX_ROUNDS (nil, i.e. disabled, when unset).
 		checkex: checkex.New(checkex.Options{
@@ -73,7 +66,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 			NotFoundTTL:    cfg.Checkex.NotFoundTTL,
 			NotFoundLimit:  cfg.Checkex.NotFoundPerIP,
 			NotFoundWindow: cfg.Checkex.NotFoundWindow,
-		}, checkexdb.New(db), scrapler.NewClient(cfg.Checkex.ScraplerURL)),
+		}, db, scrapler.NewClient(cfg.Checkex.ScraplerURL)),
 	}
 	a.loadData(ctx)
 
@@ -81,9 +74,8 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	if a.checkex != nil {
 		upstream = a.checkex
 	}
-	exams := exam.NewService(examdb.New(db), upstream, a.rooms)
-	ingestRepo := ingestdb.New(db)
-	admins := admin.NewService(admindb.New(db), ingestRepo, ingest.NewService(ingestRepo, importer.Registry{}), a.rooms, a)
+	exams := exam.NewService(db, upstream, a.rooms)
+	admins := admin.NewService(db, db, ingest.NewService(db, importer.Registry{}), a.rooms, a)
 
 	clientIPs := middleware.NewClientIPResolver(cfg.TrustedProxies)
 	exploreCache := httpx.NewResponseCache(10_000, 5*time.Minute)

@@ -2,11 +2,6 @@ package room
 
 import "sync"
 
-// CatalogLoader reads the room catalog from where it is stored.
-type CatalogLoader interface {
-	Load() Catalog
-}
-
 // Service serves the room catalog (layouts, images, map links). The catalog
 // is reloaded at runtime when room files change.
 type Service struct {

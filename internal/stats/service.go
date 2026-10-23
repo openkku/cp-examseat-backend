@@ -4,25 +4,18 @@ import (
 	"context"
 	"log"
 	"sync"
-
-	"github.com/openkku/cp-examseat-backend/internal/shared/domain"
 )
-
-// SeatSource reads every stored seat.
-type SeatSource interface {
-	GetAllSeats(ctx context.Context) ([]domain.Seat, error)
-}
 
 // Service precomputes the analytics dashboard; it is rebuilt on every
 // (re)load, as the data only changes when rounds are imported or deleted.
 type Service struct {
-	seats     SeatSource
+	seats     Repository
 	mu        sync.RWMutex
 	dashboard *Dashboard
 }
 
 // NewService creates a Service. Call Refresh before use.
-func NewService(seats SeatSource) *Service {
+func NewService(seats Repository) *Service {
 	return &Service{seats: seats}
 }
 

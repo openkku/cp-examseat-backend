@@ -17,8 +17,9 @@ SQLite ([modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite), no CGO) ·
 
 The code is grouped by feature. Each slice has a **core** (domain types, use
 cases and the interfaces, or *ports*, it needs) and **adapters** in
-subpackages that plug the core into HTTP, the database, files or other
-services:
+subpackages that plug the core into HTTP, files or other services. The
+database is the one adapter shared by every slice: a single package per
+engine (see [Database engines](#database-engines)).
 
 ```
                HTTP request
@@ -35,7 +36,7 @@ services:
   <slice>           core: entities, rules, use cases (Service) and ports
         ▲           — imports only the standard library, shared/domain and other cores
         │ implements a port
-  <slice>/database   SQL through database/sql (engine-neutral)
+  database/sqlite    SQL + schema for every slice (one package per engine)
   <slice>/filesystem room JSON files
   checkex/scrapler   checkex lookups over HTTP
   ingest/importer    pdf / xlsx / json seat extractors
@@ -46,33 +47,67 @@ The compiler enforces it, because a core package can't import its own
 subpackages without an import cycle. In practice:
 
 - A core never imports `net/http`, `database/sql`, chi or an adapter package.
-  Each port is declared in the core that uses it (`exam.Repository`,
-  `checkex.Source`, `ingest.Extractor`, …), and each adapter has a
-  compile-time check that it implements the port.
+  Each port is declared in the core that uses it, always in
+  **`<slice>/ports.go`**, and each adapter has a compile-time check that it
+  implements the port. Database ports are always called `Repository`.
+- Every core uses the same files:
+
+  | File | Holds |
+  |------|-------|
+  | `<slice>.go` | package doc and the slice's data types (queries, options, results) |
+  | `errors.go` | sentinel errors and error types |
+  | `ports.go` | the interfaces the core needs (its ports) |
+  | `service.go` | `Service`, its constructor and the use cases |
+
+  A slice without data types of its own (`round`, `roomconfig`) keeps its
+  package doc in `service.go`. Larger helpers get their own file
+  (`checkex/limiter.go`, `stats/builder.go`).
 - Handlers depend on small interfaces of their own, not on `*Service`, so
   they're easy to test with fakes.
 - **`internal/app`** is the composition root. It's the only place that knows
   which adapter implements which port. There is no global mutable state.
 
+### Ports
+
+| Slice | Port (`<slice>/ports.go`) | Implemented by |
+|-------|---------------------------|----------------|
+| `exam` | `Repository` | `database/sqlite` |
+| | `Upstream` | `checkex.Service` (`exam.NoUpstream` when checkex is off) |
+| | `RoomDirectory` | `room.Service` |
+| `checkex` | `Repository` | `database/sqlite` |
+| | `Source` | `checkex/scrapler.Client` |
+| `ingest` | `Repository` | `database/sqlite` |
+| | `Extractor` | `ingest/importer.Registry` |
+| `admin` | `Repository`, `DatasetPurger` | `database/sqlite` |
+| | `Importer` | `ingest.Service` |
+| | `Rooms` | `room.Service` |
+| | `Reloader` | `app.App` |
+| `round` | `Repository` | `database/sqlite` |
+| `stats` | `Repository` | `database/sqlite` |
+| `room` | `CatalogLoader` | `room/filesystem.Loader` |
+| `roomconfig` | `Store` | `roomconfig/filesystem.Store` |
+
+`internal/database/sqlite/ports.go` lists every port the database implements.
+
 ### Database engines
 
-Slice adapters are named `database`. They talk to the database only through
-`database/sql` and `platform/database`, and never import a driver. Everything
-SQLite-specific (the modernc driver, DSN pragmas, schema migrations) lives in
-`platform/database/sqlite`. Only `internal/app` and `cmd/migrate` import it.
-The SQL tests in `platform/database/sqlite` run every slice's queries against
-SQLite.
+All SQL lives in one package per engine. Today that is `internal/database/sqlite`:
+the modernc driver, DSN pragmas, schema migrations, and one file per slice
+(`exam.go`, `checkex.go`, `ingest.go`, …) with that slice's queries. A single
+`*sqlite.DB` implements every slice's repository port, and `ports.go` lists
+them as compile-time checks. Only `internal/app` and `cmd/migrate` import it.
+The tests next to it run every query against SQLite.
 
-To add another engine (for example `platform/database/postgres`), add a
-sibling package with an `Open` that returns a `*database.DB` and its own
-schema, and choose it in `internal/app`. The slice queries still use these
-SQLite/MySQL-isms, which a new engine needs to handle:
+To add another engine (for example `internal/database/mariadb`), add a
+sibling package with an `Open`, its own schema, and methods for every port in
+`ports.go`, then choose it in `internal/app`. The SQLite queries use these
+dialect features, which the new engine needs its own version of:
 
 - `?` placeholders
-- `INSERT OR IGNORE` (ingest, checkex)
-- `GROUP_CONCAT` (`platform/database.SeatSelect`)
+- `INSERT OR IGNORE` and `ON CONFLICT … DO UPDATE` (ingest, checkex)
+- `GROUP_CONCAT(… ORDER BY …)` (`seatSelect` in `seats.go`); labels can't contain commas, which ingest enforces
 - `res.LastInsertId()` (ingest, checkex)
-- the `rowid` ordering of rounds (`platform/database.Rounds`)
+- the `rowid` ordering of rounds (`rounds` in `seats.go`)
 - `IS ?` comparisons (checkex)
 
 ### Layout
@@ -88,20 +123,20 @@ internal/
   shared/
     domain/        shared kernel: Seat, Round, labels, student IDs, Thai dates
     httpx/         JSON/error bodies, cached pre-compressed responses, parameter limits
+  database/
+    sqlite/        SQLite: driver, settings, migrations, every slice's queries (+ SQL tests)
   platform/
-    database/      engine-neutral DB handle and shared seat/round row helpers
-      sqlite/      SQLite engine: driver, connection settings, migrations (+ SQL tests)
     middleware/    compression, CORS, rate limiting, security headers, auth
     compression/   content-encoding negotiation and codecs
   exam/            student schedules, room explorer, calendar feeds
-                   database/ handler/ presenter/
-  checkex/         on-demand seat lookups from checkex   database/ scrapler/
+                   handler/ presenter/
+  checkex/         on-demand seat lookups from checkex   scrapler/
   room/            room catalog (layouts, images, maps)  filesystem/ handler/ presenter/
   roomconfig/      room-config tool use cases             filesystem/ handler/
-  round/           cached round list                      database/ handler/
-  stats/           analytics dashboard                    database/ handler/
-  ingest/          seating file imports                   database/ importer/{pdf,xlsx,jsonfile}/
-  admin/           admin API use cases                    database/ handler/
+  round/           cached round list                      handler/
+  stats/           analytics dashboard                    handler/
+  ingest/          seating file imports                   importer/{pdf,xlsx,jsonfile}/
+  admin/           admin API use cases                    handler/
 script/            Python helpers (xlsx scraper, enrollment parser)
 docs/              API and environment reference
 ```

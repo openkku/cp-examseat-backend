@@ -2,9 +2,7 @@ package exam
 
 import (
 	"context"
-	"errors"
 
-	"github.com/openkku/cp-examseat-backend/internal/checkex"
 	"github.com/openkku/cp-examseat-backend/internal/shared/domain"
 )
 
@@ -63,11 +61,4 @@ func (s *Service) Options(ctx context.Context, q OptionsQuery) ([]string, error)
 		q.RoomFilter = s.rooms.Has
 	}
 	return s.repo.GetOptions(ctx, q)
-}
-
-// RetryLater reports whether err is an upstream answer the visitor should
-// retry later rather than a failure.
-func RetryLater(err error) bool {
-	var queued *checkex.LookupQueuedError
-	return errors.As(err, &queued) || errors.Is(err, checkex.ErrLookupLimited) || errors.Is(err, checkex.ErrLookupBusy)
 }

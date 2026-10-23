@@ -1,5 +1,4 @@
-// Package database manages stored rounds for the admin slice in the SQL database.
-package database
+package sqlite
 
 import (
 	"context"
@@ -7,34 +6,21 @@ import (
 	"sort"
 
 	"github.com/openkku/cp-examseat-backend/internal/admin"
-	platformdb "github.com/openkku/cp-examseat-backend/internal/platform/database"
 	"github.com/openkku/cp-examseat-backend/internal/shared/domain"
 )
 
-// Repo implements admin.Repository.
-type Repo struct {
-	db *platformdb.DB
-}
-
-var _ admin.Repository = (*Repo)(nil)
-
-// New creates a Repo on db.
-func New(db *platformdb.DB) *Repo {
-	return &Repo{db: db}
-}
-
 // RoundExists reports whether the round is stored.
-func (r *Repo) RoundExists(ctx context.Context, roundID string) (bool, error) {
+func (d *DB) RoundExists(ctx context.Context, roundID string) (bool, error) {
 	var n int
-	if err := r.db.SQL().QueryRowContext(ctx, "SELECT COUNT(*) FROM round_info WHERE id = ?", roundID).Scan(&n); err != nil {
+	if err := d.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM round_info WHERE id = ?", roundID).Scan(&n); err != nil {
 		return false, fmt.Errorf("failed to look up round: %w", err)
 	}
 	return n > 0, nil
 }
 
 // RoundSummaries lists every round with seat and student counts, newest first.
-func (r *Repo) RoundSummaries(ctx context.Context) ([]admin.RoundSummary, error) {
-	rounds, err := platformdb.Rounds(ctx, r.db.SQL())
+func (d *DB) RoundSummaries(ctx context.Context) ([]admin.RoundSummary, error) {
+	rounds, err := d.rounds(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +32,7 @@ func (r *Repo) RoundSummaries(ctx context.Context) ([]admin.RoundSummary, error)
 		byID[ro.ID] = &out[i]
 	}
 
-	rows, err := r.db.SQL().QueryContext(ctx, `
+	rows, err := d.db.QueryContext(ctx, `
 		SELECT es.exam_round, COALESCE(es.custom_id, ''), COUNT(*)
 		FROM exam_seats st
 		JOIN exam_sessions es ON st.session_id = es.id
@@ -76,7 +62,7 @@ func (r *Repo) RoundSummaries(ctx context.Context) ([]admin.RoundSummary, error)
 		return nil, err
 	}
 
-	students, err := r.db.SQL().QueryContext(ctx, `
+	students, err := d.db.QueryContext(ctx, `
 		SELECT es.exam_round, COUNT(DISTINCT st.student_id)
 		FROM exam_seats st
 		JOIN exam_sessions es ON st.session_id = es.id
@@ -104,8 +90,8 @@ func (r *Repo) RoundSummaries(ctx context.Context) ([]admin.RoundSummary, error)
 
 // DeleteRound removes a round with all its sessions (in-schedule and custom),
 // seats, labels, subjects and recorded checkex lookups.
-func (r *Repo) DeleteRound(ctx context.Context, roundID string) error {
-	tx, err := r.db.SQL().BeginTx(ctx, nil)
+func (d *DB) DeleteRound(ctx context.Context, roundID string) error {
+	tx, err := d.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -125,8 +111,8 @@ func (r *Repo) DeleteRound(ctx context.Context, roundID string) error {
 }
 
 // SetRoundLabel renames a round.
-func (r *Repo) SetRoundLabel(ctx context.Context, roundID string, label string) error {
-	res, err := r.db.SQL().ExecContext(ctx, "UPDATE round_info SET label = ? WHERE id = ?", label, roundID)
+func (d *DB) SetRoundLabel(ctx context.Context, roundID string, label string) error {
+	res, err := d.db.ExecContext(ctx, "UPDATE round_info SET label = ? WHERE id = ?", label, roundID)
 	if err != nil {
 		return fmt.Errorf("failed to rename round: %w", err)
 	}

@@ -9,10 +9,9 @@ import (
 	"os"
 
 	"github.com/openkku/cp-examseat-backend/internal/config"
+	"github.com/openkku/cp-examseat-backend/internal/database/sqlite"
 	"github.com/openkku/cp-examseat-backend/internal/ingest"
-	ingestdb "github.com/openkku/cp-examseat-backend/internal/ingest/database"
 	"github.com/openkku/cp-examseat-backend/internal/ingest/importer"
-	"github.com/openkku/cp-examseat-backend/internal/platform/database/sqlite"
 	"github.com/openkku/cp-examseat-backend/internal/shared/domain"
 )
 
@@ -112,6 +111,6 @@ func importFile(opts ingest.Options) error {
 	}
 	defer db.Close()
 
-	_, err = ingest.NewService(ingestdb.New(db), importer.Registry{}).Ingest(context.Background(), opts)
+	_, err = ingest.NewService(db, importer.Registry{}).Ingest(context.Background(), opts)
 	return err
 }

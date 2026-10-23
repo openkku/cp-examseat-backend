@@ -1,32 +1,17 @@
-// Package database replaces imported rounds and custom datasets in the SQL database.
-package database
+package sqlite
 
 import (
 	"context"
 	"fmt"
 	"strings"
 
-	"github.com/openkku/cp-examseat-backend/internal/ingest"
-	platformdb "github.com/openkku/cp-examseat-backend/internal/platform/database"
 	"github.com/openkku/cp-examseat-backend/internal/shared/domain"
 )
 
-// Repo implements ingest.Repository.
-type Repo struct {
-	db *platformdb.DB
-}
-
-var _ ingest.Repository = (*Repo)(nil)
-
-// New creates a Repo on db.
-func New(db *platformdb.DB) *Repo {
-	return &Repo{db: db}
-}
-
 // PurgeRound deletes the in-schedule sessions and subjects of a round, keeping
 // custom (out-of-schedule) datasets. The round itself is removed once empty.
-func (r *Repo) PurgeRound(ctx context.Context, roundID string) error {
-	tx, err := r.db.SQL().BeginTx(ctx, nil)
+func (d *DB) PurgeRound(ctx context.Context, roundID string) error {
+	tx, err := d.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -56,12 +41,12 @@ func (r *Repo) PurgeRound(ctx context.Context, roundID string) error {
 }
 
 // PurgeCustomDataset deletes the sessions imported under one custom dataset ID.
-func (r *Repo) PurgeCustomDataset(ctx context.Context, roundID string, customID string) error {
+func (d *DB) PurgeCustomDataset(ctx context.Context, roundID string, customID string) error {
 	if customID == "" {
-		return r.PurgeRound(ctx, roundID)
+		return d.PurgeRound(ctx, roundID)
 	}
 
-	tx, err := r.db.SQL().BeginTx(ctx, nil)
+	tx, err := d.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -78,8 +63,8 @@ func (r *Repo) PurgeCustomDataset(ctx context.Context, roundID string, customID 
 }
 
 // AddRound upserts the round label and inserts the given seats in one transaction.
-func (r *Repo) AddRound(ctx context.Context, roundID string, displayName string, seats []domain.Seat) error {
-	tx, err := r.db.SQL().BeginTx(ctx, nil)
+func (d *DB) AddRound(ctx context.Context, roundID string, displayName string, seats []domain.Seat) error {
+	tx, err := d.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
