@@ -11,7 +11,7 @@ require (
 	github.com/klauspost/compress v1.20.0
 	github.com/minoplhy/ikalendar v0.2.0
 	github.com/xuri/excelize/v2 v2.11.1-0.20261020033641-611b222fd8f7
-	golang.org/x/sync v0.23.0
+	golang.org/x/sync v0.24.0
 	golang.org/x/time v0.16.0
 	modernc.org/sqlite v1.59.0
 )
