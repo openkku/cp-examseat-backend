@@ -1,7 +1,7 @@
 # ----------------------------
 # Stage 1: Build the operator app's web UI
 # ----------------------------
-FROM node:24-alpine AS operator-ui
+FROM node:25-alpine AS operator-ui
 
 WORKDIR /ui
 COPY cmd/operator/frontend/package.json cmd/operator/frontend/package-lock.json ./
