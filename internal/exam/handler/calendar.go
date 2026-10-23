@@ -107,5 +107,5 @@ func writeCalendar(w http.ResponseWriter, filename string, ics []byte) {
 	w.Header().Set("Content-Type", "text/calendar; charset=utf-8")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 	w.Header().Set("Cache-Control", "public, max-age=600")
-	w.Write(ics)
+	w.Write(ics) // #nosec G705 -- iCalendar built by ikalendar, served as a text/calendar attachment with nosniff
 }
