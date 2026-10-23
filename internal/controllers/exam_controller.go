@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/openkku/cp-examseat-backend/internal/models"
@@ -8,14 +9,23 @@ import (
 	"github.com/openkku/cp-examseat-backend/internal/views"
 )
 
+// queuedRetryAfter is how many seconds a queued visitor should wait before asking again.
+const queuedRetryAfter = 5
+
+// ClientIPFunc identifies the visitor of a request for per-client limits.
+type ClientIPFunc func(*http.Request) string
+
 // ExamController serves a student's exam schedule.
 type ExamController struct {
-	exams *services.ExamService
+	exams    *services.ExamService
+	checkex  *services.CheckexService
+	clientIP ClientIPFunc
 }
 
-// NewExamController creates an ExamController.
-func NewExamController(exams *services.ExamService) *ExamController {
-	return &ExamController{exams: exams}
+// NewExamController creates an ExamController. checkex may be nil, which
+// disables on-demand lookups from checkex.
+func NewExamController(exams *services.ExamService, checkex *services.CheckexService, clientIP ClientIPFunc) *ExamController {
+	return &ExamController{exams: exams, checkex: checkex, clientIP: clientIP}
 }
 
 // Show handles GET /api/exam?id={studentID}&round={roundID}.
@@ -32,6 +42,22 @@ func (c *ExamController) Show(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// For rounds served by checkex, fetch this student's seats on first request.
+	// Other upstream failures fall through to the DB read and show as "no data".
+	var queued *models.LookupQueuedError
+	switch err := c.checkex.Ensure(r.Context(), round, id, clientIP(c.clientIP, r)); {
+	case errors.As(err, &queued):
+		// Still in line; the lookup finishes in the background and the retry reads the DB.
+		views.Queued(w, queued.Position, queuedRetryAfter)
+		return
+	case errors.Is(err, models.ErrLookupLimited):
+		views.Error(w, "ค้นหารหัสที่ไม่พบข้อมูลบ่อยเกินไป กรุณาลองใหม่ภายหลัง", http.StatusTooManyRequests)
+		return
+	case errors.Is(err, models.ErrLookupBusy):
+		views.Error(w, "ระบบกำลังดึงข้อมูล กรุณาลองใหม่อีกครั้ง", http.StatusServiceUnavailable)
+		return
+	}
+
 	seats, err := c.exams.StudentSchedule(r.Context(), id, &round)
 	if err != nil {
 		views.Error(w, "Database Error", http.StatusInternalServerError)
@@ -44,4 +70,12 @@ func (c *ExamController) Show(w http.ResponseWriter, r *http.Request) {
 	}
 
 	views.JSON(w, http.StatusOK, views.ExamSchedules(seats))
+}
+
+// clientIP returns the visitor's address, or "" (never limited) without a resolver.
+func clientIP(f ClientIPFunc, r *http.Request) string {
+	if f == nil {
+		return ""
+	}
+	return f(r)
 }

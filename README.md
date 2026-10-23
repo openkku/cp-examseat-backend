@@ -31,7 +31,7 @@ services/     (M)  application logic, in-memory state loaded at startup (rounds,
 models/       (M)  domain entities + rules (Seat, Round, Room, Dashboard, ID normalization,
     │              round ordering, analytics), repository interfaces
     ▼
-repositories/ (M)  persistence: sqlite/ (exams.db), filesystem/ (room/*.json)
+repositories/ (M)  persistence: sqlite/ (exams.db), filesystem/ (room/*.json), scrapler/ (checkex over HTTP)
 
 views/        (V)  representations: JSON payloads, error bodies, iCalendar (.ics),
                    cached pre-compressed responses
@@ -61,9 +61,9 @@ internal/
   routes/          router definitions
   middleware/      compression, CORS
   controllers/     exam, explore, calendar, room, round, stats, room-config
-  services/        exam, round, room, stats, ingest
+  services/        exam, round, room, stats, ingest, checkex
   models/          entities, domain rules, repository contract
-  repositories/    sqlite/ and filesystem/ implementations
+  repositories/    sqlite/ and filesystem/ implementations, scrapler/ (checkex lookup client)
   views/           JSON / ICS rendering and response cache
   compression/     content-encoding negotiation and codecs
   importers/       pdf/, xlsx/, jsonfile/ seat extractors
@@ -78,7 +78,8 @@ docs/              API and environment reference
 | Import a round | Admin page (`/admin` on the frontend), or `migrate` CLI then reload |
 | Reload after changing data or room files | Admin page "Reload", `POST /api/admin/reload`, or `kill -HUP <pid>` / `docker compose kill -s HUP backend` |
 | Back up | Automatic with `BACKUP_DIR`; on demand from the admin page or `go run ./cmd/migrate backup <file>` |
-| Deploy | Every push to `main` publishes `ghcr.io/openkku/cp-examseat-backend:latest` (and `:sha-…`, `:X.Y.Z` for `vX.Y.Z` tags). The frontend repository's [`deploy/`](https://github.com/openkku/cp-examseat-frontend/tree/main/deploy) runs both images with HTTPS |
+| Deploy | Every push to `main` publishes `ghcr.io/openkku/cp-examseat-backend:latest` (and `:sha-…`, `:X.Y.Z` for `vX.Y.Z` tags). [openkku/cp-examseat-deployment](https://github.com/openkku/cp-examseat-deployment) runs it with the frontend, scrapler and the KKU VPN behind HTTPS |
+| Serve a checkex round | Set `CHECKEX_ROUNDS` (e.g. `final_1_2569`) and `SCRAPLER_URL`; seats are fetched on first lookup through [scrapler](https://github.com/openkku/akhsakov-scrapler). See [docs/env.md](docs/env.md#9-on-demand-lookup-from-checkex-checkex_-scrapler_url) |
 
 The server needs no restart after an import: rounds, rooms, statistics and
 all response caches are refreshed on reload.

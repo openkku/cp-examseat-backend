@@ -38,3 +38,28 @@ func TestLoadOverridesAndInvalidValues(t *testing.T) {
 		t.Errorf("overrides = %+v", c)
 	}
 }
+
+func TestLoadCheckex(t *testing.T) {
+	for _, k := range []string{"SCRAPLER_URL", "CHECKEX_ROUNDS", "CHECKEX_ROUND_LABELS", "CHECKEX_ID_PREFIXES", "CHECKEX_NOTFOUND_TTL", "CHECKEX_NOTFOUND_PER_IP", "CHECKEX_NOTFOUND_WINDOW"} {
+		t.Setenv(k, "")
+	}
+	c := Load().Checkex
+	if c.ScraplerURL != "http://127.0.0.1:8090" || len(c.Rounds) != 0 || len(c.IDPrefixes) != 2 {
+		t.Errorf("defaults = %+v", c)
+	}
+	if c.NotFoundTTL != 6*time.Hour || c.NotFoundPerIP != 5 || c.NotFoundWindow != time.Hour {
+		t.Errorf("defaults = %+v", c)
+	}
+
+	t.Setenv("SCRAPLER_URL", "http://scrapler:8090/")
+	t.Setenv("CHECKEX_ROUNDS", "final_1_2569, mid_2_2569")
+	t.Setenv("CHECKEX_ROUND_LABELS", "final_1_2569=ปลายภาค 1/2569; bad ;=x")
+	t.Setenv("CHECKEX_NOTFOUND_PER_IP", "0")
+	c = Load().Checkex
+	if c.ScraplerURL != "http://scrapler:8090" || len(c.Rounds) != 2 || c.Rounds[1] != "mid_2_2569" {
+		t.Errorf("overrides = %+v", c)
+	}
+	if len(c.RoundLabels) != 1 || c.RoundLabels["final_1_2569"] != "ปลายภาค 1/2569" || c.NotFoundPerIP != 0 {
+		t.Errorf("overrides = %+v", c)
+	}
+}

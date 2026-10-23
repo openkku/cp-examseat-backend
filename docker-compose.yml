@@ -11,6 +11,9 @@ services:
       # - DATA_DIR=/app/data
       # - IMAGE_BASE_URL=
       # - CORS_ALLOWED_ORIGINS=https://exam.example.com
+      # On-demand checkex lookups through scrapler (see docs/env.md):
+      # - CHECKEX_ROUNDS=final_1_2569
+      # - SCRAPLER_URL=http://scrapler:8090
     networks:
       - cpkku-network
 

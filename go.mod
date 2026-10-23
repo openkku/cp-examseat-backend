@@ -8,6 +8,7 @@ require (
 	github.com/klauspost/compress v1.20.0
 	github.com/minoplhy/ikalendar v0.2.0
 	github.com/xuri/excelize/v2 v2.11.0
+	golang.org/x/sync v0.22.0
 	golang.org/x/time v0.16.0
 	modernc.org/sqlite v1.59.0
 )

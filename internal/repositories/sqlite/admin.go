@@ -79,16 +79,25 @@ func (d *Database) RoundSummaries(ctx context.Context) ([]models.RoundSummary, e
 }
 
 // DeleteRound removes a round with all its sessions (in-schedule and custom),
-// seats, labels and subjects.
+// seats, labels, subjects and recorded checkex lookups.
 func (d *Database) DeleteRound(ctx context.Context, roundID string) error {
-	res, err := d.db.ExecContext(ctx, "DELETE FROM round_info WHERE id = ?", roundID)
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	res, err := tx.ExecContext(ctx, "DELETE FROM round_info WHERE id = ?", roundID)
 	if err != nil {
 		return fmt.Errorf("failed to delete round: %w", err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return models.ErrRoundNotFound
 	}
-	return nil
+	if _, err := tx.ExecContext(ctx, "DELETE FROM upstream_lookups WHERE exam_round = ?", roundID); err != nil {
+		return fmt.Errorf("failed to clear upstream lookups: %w", err)
+	}
+	return tx.Commit()
 }
 
 // SetRoundLabel renames a round.

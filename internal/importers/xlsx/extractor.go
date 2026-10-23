@@ -5,8 +5,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/openkku/cp-examseat-backend/internal/models"
@@ -194,7 +192,7 @@ func ExtractSeats(filePath string, roundID string, labels []string, roomLayout s
 
 				cleanID := models.NormalizeStudentID(studentID)
 				if cleanID != "" {
-					cleanDate := parseThaiDate(sheetName)
+					cleanDate := models.ParseThaiDate(sheetName)
 					seats = append(seats, models.Seat{
 						Sheet:       sheetName,
 						Date:        cleanDate,
@@ -222,32 +220,4 @@ func ExtractSeats(filePath string, roundID string, labels []string, roomLayout s
 	}
 
 	return seats, nil
-}
-
-// parseThaiDate translates sheet labels like "2 มี.ค. 68" to standard date format "2025-03-02"
-func parseThaiDate(sheet string) string {
-	re := regexp.MustCompile(`(\d+)\s*([^\d\s]+)\s*(\d+)`)
-	matches := re.FindStringSubmatch(sheet)
-	if len(matches) < 4 {
-		return ""
-	}
-	day := matches[1]
-	rawMonth := matches[2]
-	yearTh := matches[3]
-	cleanMonth := strings.ReplaceAll(rawMonth, ".", "")
-	monthMap := map[string]string{
-		"มค": "01", "กพ": "02", "มีค": "03", "เมย": "04",
-		"พค": "05", "มิย": "06", "กค": "07", "สค": "08",
-		"กย": "09", "ตค": "10", "พย": "11", "ธค": "12",
-	}
-	month, ok := monthMap[cleanMonth]
-	if !ok {
-		return ""
-	}
-	if len(day) == 1 {
-		day = "0" + day
-	}
-	yInt, _ := strconv.Atoi(yearTh)
-	yearAD := (2500 + yInt) - 543
-	return fmt.Sprintf("%d-%s-%s", yearAD, month, day)
 }
