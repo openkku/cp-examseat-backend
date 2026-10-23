@@ -168,7 +168,7 @@ stack (VPN, scrapler, backend, frontend) is in
 | `CHECKEX_NOTFOUND_TTL` | `6h` | How long a "not found" answer is trusted before that ID may be asked again. |
 | `CHECKEX_NOTFOUND_PER_IP` | `5` | "Not found" answers one visitor can cause per window. `0` turns the limit off. |
 | `CHECKEX_NOTFOUND_WINDOW` | `1h` | Window of the limit above. The budget refills evenly over it (one slot every 12 minutes by default). |
-| `SCRAPLER_URL` | `http://127.0.0.1:8090` | scrapler base URL. |
+| `SCRAPLER_URL` | `http://127.0.0.1:8090` | scrapler base URL. A scrapler hub (agents on other networks doing the lookups) serves the same API, so it can be pointed there too. |
 
 Behaviour:
 
@@ -178,11 +178,18 @@ Behaviour:
 - **Already imported:** students with in-schedule seats imported another way
   (Excel, JSON) are never asked upstream. Custom (out-of-schedule) datasets
   don't count, since upstream still has the regular exams.
-- **Queue:** a search waits for its turn in scrapler (up to scrapler's
-  `SCRAPLER_MAX_WAIT`, 20s by default). If it isn't done by then,
-  `/api/exam` answers `202` with `{"queued": true, "position": N,
-  "retry_after": 5}`; the lookup keeps running in scrapler and the retry
-  stores its answer. Identical concurrent lookups share one call.
+- **Queue:** a search at the front of scrapler's line waits for its
+  answer (up to scrapler's `SCRAPLER_MAX_WAIT`, 5s by default). A search
+  further back, or one not done in time, gets `202` from `/api/exam` at once
+  with `{"queued": true, "position": N, "retry_after": S}`, where `S` is
+  scrapler's suggestion (1–5s, from the position) or 5 when it gives none.
+  The lookup keeps running in scrapler and the retry stores its answer.
+  Identical concurrent lookups share one call.
+- **checkex unreachable:** when scrapler answers `unavailable` (a hub with no
+  healthy agent), `/api/exam` returns `503` with a message saying checkex
+  can't be reached. Nothing was queued; students already in the database are
+  unaffected. Deploy this backend before a scrapler that can send
+  `unavailable`: older backends show a generic error for it.
 - **Per-visitor limit:** real students look up IDs that exist, while scripts
   walking ID ranges mostly get "not found". After `CHECKEX_NOTFOUND_PER_IP`
   not-found answers in the window, a visitor's searches for IDs not stored

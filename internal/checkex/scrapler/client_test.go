@@ -57,8 +57,13 @@ func TestClientAnswers(t *testing.T) {
 		{http.StatusOK, `{"status":"not_found"}`, func(err error) bool { return err == nil }},
 		{http.StatusAccepted, `{"status":"queued","position":4}`, func(err error) bool {
 			var q *checkex.LookupQueuedError
-			return errors.As(err, &q) && q.Position == 4
+			return errors.As(err, &q) && q.Position == 4 && q.RetryAfter == 0
 		}},
+		{http.StatusAccepted, `{"status":"queued","position":2,"retry_after":4}`, func(err error) bool {
+			var q *checkex.LookupQueuedError
+			return errors.As(err, &q) && q.Position == 2 && q.RetryAfter == 4
+		}},
+		{http.StatusServiceUnavailable, `{"status":"unavailable"}`, func(err error) bool { return errors.Is(err, checkex.ErrUpstreamUnavailable) }},
 		{http.StatusTooManyRequests, `{"status":"limited"}`, func(err error) bool { return errors.Is(err, checkex.ErrLookupLimited) }},
 		{http.StatusServiceUnavailable, `{"status":"busy"}`, func(err error) bool { return errors.Is(err, checkex.ErrLookupBusy) }},
 		{http.StatusBadGateway, `{"status":"error","error":"vpn down"}`, func(err error) bool { return err != nil }},

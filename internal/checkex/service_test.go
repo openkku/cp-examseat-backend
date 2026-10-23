@@ -152,7 +152,7 @@ func TestCheckexFetchesOnce(t *testing.T) {
 
 func TestCheckexDoesNotCacheErrorsOrQueued(t *testing.T) {
 	ctx := context.Background()
-	for _, upstreamErr := range []error{errors.New("vpn down"), &checkex.LookupQueuedError{Position: 2}, checkex.ErrLookupBusy, checkex.ErrLookupLimited} {
+	for _, upstreamErr := range []error{errors.New("vpn down"), &checkex.LookupQueuedError{Position: 2}, checkex.ErrLookupBusy, checkex.ErrLookupLimited, checkex.ErrUpstreamUnavailable} {
 		r, db := testCheckex(t, checkex.Options{}, func(context.Context, string, string, string) ([]domain.Seat, bool, error) {
 			return nil, false, upstreamErr
 		})

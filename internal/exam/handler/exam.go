@@ -14,7 +14,8 @@ import (
 	"github.com/openkku/cp-examseat-backend/internal/shared/httpx"
 )
 
-// queuedRetryAfter is how many seconds a queued visitor should wait before asking again.
+// queuedRetryAfter is how many seconds a queued visitor should wait before
+// asking again, when scrapler doesn't suggest a time itself.
 const queuedRetryAfter = 5
 
 // Schedules returns a student's seats in one round.
@@ -53,13 +54,20 @@ func (h *Exam) Show(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case errors.As(err, &queued):
 		// Still in line; the lookup finishes in the background and the retry reads the DB.
-		writeQueued(w, queued.Position, queuedRetryAfter)
+		retryAfter := queued.RetryAfter
+		if retryAfter <= 0 {
+			retryAfter = queuedRetryAfter
+		}
+		writeQueued(w, queued.Position, retryAfter)
 		return
 	case errors.Is(err, checkex.ErrLookupLimited):
 		httpx.Error(w, "ค้นหารหัสที่ไม่พบข้อมูลบ่อยเกินไป กรุณาลองใหม่ภายหลัง", http.StatusTooManyRequests)
 		return
 	case errors.Is(err, checkex.ErrLookupBusy):
 		httpx.Error(w, "ระบบกำลังดึงข้อมูล กรุณาลองใหม่อีกครั้ง", http.StatusServiceUnavailable)
+		return
+	case errors.Is(err, checkex.ErrUpstreamUnavailable):
+		httpx.Error(w, "ไม่สามารถติดต่อระบบคณะ (checkex.computing.kku.ac.th) ได้ในขณะนี้ กรุณาลองใหม่ภายหลัง", http.StatusServiceUnavailable)
 		return
 	case err != nil:
 		httpx.Error(w, "Database Error", http.StatusInternalServerError)

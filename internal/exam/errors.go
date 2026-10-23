@@ -13,5 +13,8 @@ var ErrInvalidOptionMode = errors.New("invalid mode")
 // retry later rather than a failure.
 func RetryLater(err error) bool {
 	var queued *checkex.LookupQueuedError
-	return errors.As(err, &queued) || errors.Is(err, checkex.ErrLookupLimited) || errors.Is(err, checkex.ErrLookupBusy)
+	return errors.As(err, &queued) ||
+		errors.Is(err, checkex.ErrLookupLimited) ||
+		errors.Is(err, checkex.ErrLookupBusy) ||
+		errors.Is(err, checkex.ErrUpstreamUnavailable)
 }

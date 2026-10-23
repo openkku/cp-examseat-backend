@@ -156,7 +156,8 @@ func (s *Service) fetch(ctx context.Context, round, studentID, client string) er
 	seats, found, err := s.source.Lookup(ctx, round, studentID, client)
 	var queued *LookupQueuedError
 	switch {
-	case errors.As(err, &queued), errors.Is(err, ErrLookupLimited), errors.Is(err, ErrLookupBusy):
+	case errors.As(err, &queued), errors.Is(err, ErrLookupLimited), errors.Is(err, ErrLookupBusy),
+		errors.Is(err, ErrUpstreamUnavailable):
 		return err
 	case err != nil:
 		log.Printf("⚠️ checkex: lookup %s/%s failed: %v", round, studentID, err)

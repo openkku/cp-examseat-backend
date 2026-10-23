@@ -53,7 +53,7 @@ func TestStudentScheduleNormalizesStudentID(t *testing.T) {
 
 func TestStudentScheduleUpstreamErrors(t *testing.T) {
 	ctx := context.Background()
-	for _, err := range []error{&checkex.LookupQueuedError{Position: 1}, checkex.ErrLookupLimited, checkex.ErrLookupBusy} {
+	for _, err := range []error{&checkex.LookupQueuedError{Position: 1}, checkex.ErrLookupLimited, checkex.ErrLookupBusy, checkex.ErrUpstreamUnavailable} {
 		if _, got := NewService(&fakeRepo{}, fakeUpstream{err: err}, nil).StudentSchedule(ctx, "1", "r", ""); !errors.Is(got, err) {
 			t.Errorf("%v: got %v", err, got)
 		}

@@ -42,10 +42,11 @@ type lookupRequest struct {
 }
 
 type lookupResponse struct {
-	Status   string `json:"status"`
-	Position int    `json:"position"`
-	Error    string `json:"error"`
-	Seats    []struct {
+	Status     string `json:"status"`
+	Position   int    `json:"position"`
+	RetryAfter int    `json:"retry_after"`
+	Error      string `json:"error"`
+	Seats      []struct {
 		Sheet       string `json:"sheet"`
 		Date        string `json:"date"`
 		TimeStart   string `json:"time_start"`
@@ -66,7 +67,8 @@ type lookupResponse struct {
 //
 // It returns *checkex.LookupQueuedError when the lookup is still waiting in
 // scrapler's queue, checkex.ErrLookupLimited when the visitor has too many
-// lookups queued and checkex.ErrLookupBusy when the queue is full.
+// lookups queued, checkex.ErrLookupBusy when the queue is full and
+// checkex.ErrUpstreamUnavailable when checkex can't be reached at all.
 func (c *Client) Lookup(ctx context.Context, roundID, studentID, client string) ([]domain.Seat, bool, error) {
 	body, err := json.Marshal(lookupRequest{StudentID: studentID, Client: client})
 	if err != nil {
@@ -114,11 +116,13 @@ func (c *Client) Lookup(ctx context.Context, roundID, studentID, client string) 
 	case "not_found":
 		return nil, false, nil
 	case "queued":
-		return nil, false, &checkex.LookupQueuedError{Position: out.Position}
+		return nil, false, &checkex.LookupQueuedError{Position: out.Position, RetryAfter: out.RetryAfter}
 	case "limited":
 		return nil, false, checkex.ErrLookupLimited
 	case "busy":
 		return nil, false, checkex.ErrLookupBusy
+	case "unavailable":
+		return nil, false, checkex.ErrUpstreamUnavailable
 	case "error", "invalid":
 		return nil, false, fmt.Errorf("scrapler %s: %s", out.Status, out.Error)
 	default:

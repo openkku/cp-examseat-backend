@@ -28,7 +28,8 @@ func NewService(repo Repository, upstream Upstream, rooms RoomDirectory) *Servic
 //
 // For rounds fetched on demand the student's seats are fetched first. A
 // lookup the visitor has to retry (*checkex.LookupQueuedError,
-// checkex.ErrLookupLimited, checkex.ErrLookupBusy) is returned as the error;
+// checkex.ErrLookupLimited, checkex.ErrLookupBusy,
+// checkex.ErrUpstreamUnavailable) is returned as the error;
 // other upstream failures fall through to the stored seats.
 func (s *Service) StudentSchedule(ctx context.Context, studentID, round, client string) ([]domain.Seat, error) {
 	id := domain.NormalizeStudentID(studentID)
