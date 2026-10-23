@@ -4,7 +4,7 @@ go 1.26.1
 
 require (
 	github.com/andybalholm/brotli v1.2.4
-	github.com/go-chi/chi/v5 v5.3.2
+	github.com/go-chi/chi/v5 v5.5.0
 	github.com/klauspost/compress v1.20.0
 	github.com/minoplhy/ikalendar v0.2.0
 	github.com/xuri/excelize/v2 v2.11.1-0.20261020033641-611b222fd8f7
