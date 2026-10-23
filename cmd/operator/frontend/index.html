@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f8fbf8" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#09150f" media="(prefers-color-scheme: dark)" />
+    <title>Operator · CP Exam Seat</title>
+    <script>
+      // Applies the saved (or system) color scheme before first paint, as the site does.
+      try {
+        if (localStorage.getItem('theme') === 'dark' ||
+            (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark');
+        }
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

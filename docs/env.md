@@ -5,15 +5,14 @@ This document describes the environment variables supported by the CP Exam Seat 
 | Variable | Default | Used by |
 |----------|---------|---------|
 | `PORT` | `8080` | `cmd/server` |
-| `DATA_DIR` | `data` | `cmd/server`, `cmd/migrate`, `cmd/room-config` |
+| `DATA_DIR` | `data` | `cmd/server`, `cmd/migrate`, `cmd/operator` |
 | `IMAGE_BASE_URL` | *(empty)* | `cmd/server` |
 | `CORS_ALLOWED_ORIGINS` | *(empty)* | `cmd/server` |
-| `ROOM_CONFIG_ADDR` | `127.0.0.1:8081` | `cmd/room-config` |
+| `OPERATOR_ADDR` | `127.0.0.1:8081` | `cmd/operator web` |
 | `RATE_LIMIT_RPS` | `10` | `cmd/server` |
 | `RATE_LIMIT_BURST` | `40` | `cmd/server` |
 | `TRUSTED_PROXIES` | `loopback,private` | `cmd/server` |
-| `ADMIN_TOKEN` | *(empty)* | `cmd/server` |
-| `MAX_UPLOAD_MB` | `20` | `cmd/server` |
+| `MAX_UPLOAD_MB` | `20` | `cmd/operator web` |
 | `SCRAPLER_URL` | `http://127.0.0.1:8090` | `cmd/server` |
 | `CHECKEX_ROUNDS` | *(empty)* | `cmd/server` |
 | `CHECKEX_ROUND_LABELS` | *(derived)* | `cmd/server` |
@@ -81,11 +80,16 @@ CORS_ALLOWED_ORIGINS="https://exam.example.com,https://staging.example.com"
 
 ---
 
-## 5. `ROOM_CONFIG_ADDR`
+## 5. `OPERATOR_ADDR`
 
-Listen address of the room-config editor. It defaults to loopback because the
-tool writes files and has no authentication; it also refuses requests whose
-`Host` is not a loopback name (DNS rebinding) and cross-site writes (CSRF).
+Listen address of `operator web`, the operator app's browser UI. It defaults
+to loopback because the app changes data and has no authentication; it also
+refuses requests whose `Host` is not a loopback name (DNS rebinding) and
+cross-site writes (CSRF). On a server, reach it through an SSH tunnel
+(`ssh -L 8081:127.0.0.1:8081 <server>`). In Docker it listens on `0.0.0.0`
+inside the container and is published only on the host's `127.0.0.1`.
+
+The terminal UI (`operator`, no arguments) opens no port at all.
 
 ---
 
@@ -111,12 +115,15 @@ so a flood of spoofed addresses cannot exhaust memory.
 
 ---
 
-## 7. Admin API: `ADMIN_TOKEN`, `MAX_UPLOAD_MB`
+## 7. `MAX_UPLOAD_MB` and `$DATA_DIR/.reload`
 
-Setting `ADMIN_TOKEN` enables `/api/admin/*` (see [api.md](api.md#admin-api)),
-used by the frontend's `/admin` page. Requests must send
-`Authorization: Bearer <ADMIN_TOKEN>`. Use a long random value, e.g.
-`openssl rand -hex 32`. Uploads are capped at `MAX_UPLOAD_MB` megabytes.
+`MAX_UPLOAD_MB` caps seating files uploaded through `operator web`.
+
+There is no admin API and no token. After a change, the operator app and
+`migrate` touch `$DATA_DIR/.reload`; the server checks that file every 2
+seconds and reloads rounds, rooms, statistics and its caches when it changes.
+After editing data files by hand, `touch $DATA_DIR/.reload` (or send the
+server `SIGHUP`).
 
 ---
 
@@ -156,7 +163,7 @@ stack (VPN, scrapler, backend, frontend) is in
 | Variable | Default | Purpose |
 |---|---|---|
 | `CHECKEX_ROUNDS` | empty (feature off) | Comma-separated round IDs served by checkex, e.g. `final_1_2569`. Other rounds never go upstream. |
-| `CHECKEX_ROUND_LABELS` | derived (`final_1_2569` → `ปลายภาค 1/2569`) | Optional `id=label;id=label` overrides. An existing label (e.g. renamed in `/admin`) is kept. |
+| `CHECKEX_ROUND_LABELS` | derived (`final_1_2569` → `ปลายภาค 1/2569`) | Optional `id=label;id=label` overrides. An existing label (e.g. renamed with the operator app) is kept. |
 | `CHECKEX_ID_PREFIXES` | `68,69` | Only 10-digit IDs starting with these are sent upstream. **Bump to `69,70` for 2570** (see `TODO(2570)` in `internal/config/config.go`). |
 | `CHECKEX_NOTFOUND_TTL` | `6h` | How long a "not found" answer is trusted before that ID may be asked again. |
 | `CHECKEX_NOTFOUND_PER_IP` | `5` | "Not found" answers one visitor can cause per window. `0` turns the limit off. |
@@ -166,7 +173,7 @@ stack (VPN, scrapler, backend, frontend) is in
 Behaviour:
 
 - **Found:** fetched once per (round, student) and never refreshed. To force
-  a refetch, delete the round (admin page) or purge it; the lookups recorded
+  a refetch, delete the round (operator app or `migrate delete`) or purge it; the lookups recorded
   in `upstream_lookups` are cleared with it.
 - **Already imported:** students with in-schedule seats imported another way
   (Excel, JSON) are never asked upstream. Custom (out-of-schedule) datasets

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/klauspost/compress/gzip"
 
@@ -63,6 +64,9 @@ func newTestServer(t *testing.T, cfg config.Config) *httptest.Server {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { application.Close() })
+	watchCtx, stopWatch := context.WithCancel(context.Background())
+	go application.WatchReloads(watchCtx, 20*time.Millisecond)
+	t.Cleanup(stopWatch)
 
 	srv := httptest.NewServer(application.Handler)
 	t.Cleanup(srv.Close)

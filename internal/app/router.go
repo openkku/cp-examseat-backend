@@ -6,7 +6,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 
-	adminhandler "github.com/openkku/cp-examseat-backend/internal/admin/handler"
 	examhandler "github.com/openkku/cp-examseat-backend/internal/exam/handler"
 	"github.com/openkku/cp-examseat-backend/internal/platform/middleware"
 	roomhandler "github.com/openkku/cp-examseat-backend/internal/room/handler"
@@ -23,8 +22,6 @@ type handlers struct {
 	Room     *roomhandler.Handler
 	Round    *roundhandler.Handler
 	Stats    *statshandler.Handler
-	// Admin is mounted under /api/admin when set.
-	Admin *adminhandler.Handler
 }
 
 // routerOptions configures cross-cutting behavior of the API router.
@@ -32,8 +29,6 @@ type routerOptions struct {
 	AllowedOrigins []string
 	// RateLimit is applied to every route except /healthz.
 	RateLimit func(http.Handler) http.Handler
-	// AdminToken protects the admin API.
-	AdminToken string
 }
 
 // newRouter builds the public API router.
@@ -68,17 +63,6 @@ func mountAPI(r chi.Router, c handlers, opts routerOptions) {
 		r.Get("/stats", c.Stats.Index)
 		r.Get("/room", c.Room.Index) // [?room=A,B][&no_layout=true]
 
-		if c.Admin != nil && opts.AdminToken != "" {
-			r.Route("/admin", func(r chi.Router) {
-				r.Use(middleware.BearerAuth(opts.AdminToken))
-				r.Get("/status", c.Admin.Status)
-				r.Get("/rounds", c.Admin.Rounds)
-				r.Patch("/rounds/{round}", c.Admin.RenameRound)
-				r.Delete("/rounds/{round}", c.Admin.DeleteRound) // [?custom_id=]
-				r.Post("/import", c.Admin.Import)
-				r.Post("/reload", c.Admin.Reload)
-			})
-		}
 	})
 
 	r.Get("/room/image/*", c.Room.Image)

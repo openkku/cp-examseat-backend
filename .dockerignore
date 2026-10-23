@@ -5,7 +5,7 @@
 data
 bin
 node_modules
-cmd/room-config/frontend/node_modules
+cmd/operator/frontend/node_modules
 *.db
 *.log
 .env

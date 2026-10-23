@@ -6,14 +6,14 @@ import (
 )
 
 func TestLoadDefaults(t *testing.T) {
-	for _, k := range []string{"PORT", "DATA_DIR", "RATE_LIMIT_RPS", "RATE_LIMIT_BURST", "TRUSTED_PROXIES", "ADMIN_TOKEN", "MAX_UPLOAD_MB"} {
+	for _, k := range []string{"PORT", "DATA_DIR", "RATE_LIMIT_RPS", "RATE_LIMIT_BURST", "TRUSTED_PROXIES", "MAX_UPLOAD_MB"} {
 		t.Setenv(k, "")
 	}
 	c := Load()
 	if c.Port != "8080" || c.DataDir != "data" || c.RateLimitRPS != 10 || c.RateLimitBurst != 40 {
 		t.Errorf("defaults = %+v", c)
 	}
-	if len(c.TrustedProxies) != 2 || c.AdminToken != "" || c.MaxUploadBytes != 20<<20 {
+	if len(c.TrustedProxies) != 2 || c.MaxUploadBytes != 20<<20 {
 		t.Errorf("defaults = %+v", c)
 	}
 }

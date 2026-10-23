@@ -1,0 +1,14 @@
+{
+  "layout": [
+    {
+      "type": "column",
+      "items": [
+        {"type": "seats", "char": "B", "manual": [53, 52]},
+        {"type": "obstruction", "count": 1, "width": 42, "transparent": true},
+        {"type": "seats", "char": "A", "manual": [39]},
+        {"type": "gap", "count": 1},
+        {"type": "seats", "char": "C", "start": 20, "step": 2, "count": 3}
+      ]
+    }
+  ]
+}

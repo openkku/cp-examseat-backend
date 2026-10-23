@@ -3,6 +3,7 @@ package sqlite
 import (
 	"github.com/openkku/cp-examseat-backend/internal/admin"
 	"github.com/openkku/cp-examseat-backend/internal/checkex"
+	"github.com/openkku/cp-examseat-backend/internal/datacheck"
 	"github.com/openkku/cp-examseat-backend/internal/exam"
 	"github.com/openkku/cp-examseat-backend/internal/ingest"
 	"github.com/openkku/cp-examseat-backend/internal/round"
@@ -14,6 +15,7 @@ var (
 	_ admin.Repository    = (*DB)(nil)
 	_ admin.DatasetPurger = (*DB)(nil)
 	_ checkex.Repository  = (*DB)(nil)
+	_ datacheck.Usage     = (*DB)(nil)
 	_ exam.Repository     = (*DB)(nil)
 	_ ingest.Repository   = (*DB)(nil)
 	_ round.Repository    = (*DB)(nil)

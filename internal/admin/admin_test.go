@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/openkku/cp-examseat-backend/internal/ingest"
 	"github.com/openkku/cp-examseat-backend/internal/shared/domain"
@@ -12,8 +11,13 @@ import (
 
 type fakeRepo struct {
 	Repository
-	rounds  map[string]string
-	deleted string
+	rounds    map[string]string
+	summaries []RoundSummary
+	deleted   string
+}
+
+func (f *fakeRepo) RoundSummaries(ctx context.Context) ([]RoundSummary, error) {
+	return f.summaries, nil
 }
 
 func (f *fakeRepo) RoundExists(ctx context.Context, id string) (bool, error) {
@@ -41,7 +45,11 @@ func (f *fakePurger) PurgeCustomDataset(ctx context.Context, round, customID str
 	return nil
 }
 
-type fakeImporter struct{ opts ingest.Options }
+type fakeImporter struct {
+	opts  ingest.Options
+	seats []domain.Seat
+	err   error
+}
 
 func (f *fakeImporter) SupportedExtension(ext string) bool { return ext == ".json" }
 
@@ -50,18 +58,22 @@ func (f *fakeImporter) Ingest(ctx context.Context, opts ingest.Options) (int, er
 	return 3, nil
 }
 
+func (f *fakeImporter) Preview(opts ingest.Options) ([]domain.Seat, error) {
+	f.opts = opts
+	return f.seats, f.err
+}
+
 type fakeReloader struct {
 	err   error
 	calls int
 }
 
 func (f *fakeReloader) Reload(ctx context.Context) error { f.calls++; return f.err }
-func (f *fakeReloader) LastReload() time.Time            { return time.Time{} }
 
 func newTestService() (*Service, *fakeRepo, *fakePurger, *fakeImporter, *fakeReloader) {
 	repo := &fakeRepo{rounds: map[string]string{"mid_1_2569": "old"}}
 	purger, importer, reloader := &fakePurger{}, &fakeImporter{}, &fakeReloader{}
-	return NewService(repo, purger, importer, nil, reloader), repo, purger, importer, reloader
+	return NewService(repo, purger, importer, reloader), repo, purger, importer, reloader
 }
 
 func TestRenameRound(t *testing.T) {
@@ -117,5 +129,69 @@ func TestImport(t *testing.T) {
 	var reloadErr *ReloadError
 	if _, err := s.Import(ctx, ImportRequest{FilePath: "f.json", Round: "r"}); !errors.As(err, &reloadErr) {
 		t.Errorf("reload failure = %v; want ReloadError", err)
+	}
+}
+
+func TestPreviewImport(t *testing.T) {
+	ctx := context.Background()
+	s, repo, _, importer, _ := newTestService()
+
+	repo.summaries = []RoundSummary{
+		{
+			ID:              "mid_1_2569",
+			InScheduleSeats: 150,
+			CustomDatasets: []CustomDataset{
+				{ID: "LAB_A", Seats: 40},
+				{ID: "LAB_B", Seats: 60},
+			},
+		},
+	}
+
+	// 1. In-schedule preview
+	importer.seats = []domain.Seat{
+		{StudentID: "S1", Room: "SC1101", Date: "2026-10-01", Time: "09:00-12:00", Subject: "CP101", Section: "1"},
+		{StudentID: "S2", Room: "SC1101", Date: "2026-10-01", Time: "09:00-12:00", Subject: "CP101", Section: "1"},
+		{StudentID: "S3", Room: "SC1102", Date: "2026-10-02", Time: "13:00-16:00", Subject: "CP102", Section: "2"},
+	}
+
+	prev, err := s.PreviewImport(ctx, ImportRequest{FilePath: "f.json", Round: "mid_1_2569"})
+	if err != nil {
+		t.Fatalf("PreviewImport error: %v", err)
+	}
+	if prev.Seats != 3 || prev.Students != 3 || len(prev.Rooms) != 2 || len(prev.Dates) != 2 || prev.Sessions != 2 {
+		t.Errorf("unexpected preview counts: %+v", prev)
+	}
+	if len(prev.Replaces) != 1 || prev.Replaces[0].Type != "in_schedule" || prev.Replaces[0].Seats != 150 {
+		t.Errorf("unexpected replaces for in-schedule: %+v", prev.Replaces)
+	}
+	if len(prev.Rows) != 3 {
+		t.Errorf("unexpected rows count: %d", len(prev.Rows))
+	}
+
+	// 2. Custom dataset preview (replaces custom dataset)
+	importer.seats = []domain.Seat{
+		{StudentID: "S1", Room: "SC1101", Date: "2026-10-01", CustomID: "LAB_A"},
+		{StudentID: "S4", Room: "SC1101", Date: "2026-10-01", CustomID: "LAB_NEW"},
+	}
+	prevCustom, err := s.PreviewImport(ctx, ImportRequest{FilePath: "f.json", Round: "mid_1_2569"})
+	if err != nil {
+		t.Fatalf("PreviewImport custom error: %v", err)
+	}
+	if len(prevCustom.CustomIDs) != 2 || prevCustom.CustomIDs[0] != "LAB_A" || prevCustom.CustomIDs[1] != "LAB_NEW" {
+		t.Errorf("unexpected customIDs: %v", prevCustom.CustomIDs)
+	}
+	if len(prevCustom.Replaces) != 2 {
+		t.Fatalf("unexpected replaces length: %d", len(prevCustom.Replaces))
+	}
+	if prevCustom.Replaces[0].ID != "LAB_A" || prevCustom.Replaces[0].Seats != 40 {
+		t.Errorf("expected LAB_A to replace 40 seats, got %+v", prevCustom.Replaces[0])
+	}
+	if prevCustom.Replaces[1].ID != "LAB_NEW" || prevCustom.Replaces[1].Seats != 0 {
+		t.Errorf("expected LAB_NEW to replace 0 seats, got %+v", prevCustom.Replaces[1])
+	}
+
+	// 3. Validation error on bad round
+	if _, err := s.PreviewImport(ctx, ImportRequest{FilePath: "f.json", Round: "bad/round"}); err == nil {
+		t.Error("expected error for bad round ID")
 	}
 }

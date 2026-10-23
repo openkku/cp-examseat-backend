@@ -1,0 +1,24 @@
+{
+  "frontLabel": "Board",
+  "layout": [
+    {
+      "type": "column",
+      "label": "C1",
+      "items": [
+        {"type": "seats", "char": "A", "count": 3},
+        {"type": "gap", "count": 1},
+        {"type": "seats", "char": "B", "start": 10, "count": 2, "inverse": true}
+      ]
+    },
+    {"type": "aisle", "width": 20},
+    {
+      "type": "column",
+      "label": "C2",
+      "items": [
+        {"type": "seats", "char": "A", "count": 2},
+        {"type": "obstruction", "label": "Pillar"},
+        {"type": "seats", "char": "C", "manual": [5, 7], "inverse": true}
+      ]
+    }
+  ]
+}

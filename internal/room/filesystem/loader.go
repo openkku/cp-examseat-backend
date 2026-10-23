@@ -57,7 +57,7 @@ func LoadRoomCatalog(roomDir string, imageBaseURL string) room.Catalog {
 
 	mapDir := filepath.Join(roomDir, "map")
 	for name, meta := range metadata {
-		// Base confines layout files to map/, like the room-config tool does.
+		// Base confines layout files to map/, like the operator app does.
 		content, err := os.ReadFile(filepath.Join(mapDir, filepath.Base(meta.LayoutFile))) // #nosec G304 -- confined to map/
 		if err != nil {
 			log.Printf("⚠️  Warning: Room '%s' mapped to '%s' but file is missing/unreadable.", name, meta.LayoutFile)

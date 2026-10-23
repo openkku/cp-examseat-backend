@@ -80,12 +80,12 @@ subpackages without an import cycle. In practice:
 | | `Extractor` | `ingest/importer.Registry` |
 | `admin` | `Repository`, `DatasetPurger` | `database/sqlite` |
 | | `Importer` | `ingest.Service` |
-| | `Rooms` | `room.Service` |
-| | `Reloader` | `app.App` |
+| | `Reloader` | `platform/reloadsignal.Notifier` |
 | `round` | `Repository` | `database/sqlite` |
 | `stats` | `Repository` | `database/sqlite` |
 | `room` | `CatalogLoader` | `room/filesystem.Loader` |
 | `roomconfig` | `Store` | `roomconfig/filesystem.Store` |
+| | `Publisher` | `platform/reloadsignal.Notifier` |
 
 `internal/database/sqlite/ports.go` lists every port the database implements.
 
@@ -95,7 +95,7 @@ All SQL lives in one package per engine. Today that is `internal/database/sqlite
 the modernc driver, DSN pragmas, schema migrations, and one file per slice
 (`exam.go`, `checkex.go`, `ingest.go`, …) with that slice's queries. A single
 `*sqlite.DB` implements every slice's repository port, and `ports.go` lists
-them as compile-time checks. Only `internal/app` and `cmd/migrate` import it.
+them as compile-time checks. Only `internal/app`, `cmd/migrate` and `cmd/operator` import it.
 The tests next to it run every query against SQLite.
 
 To add another engine (for example `internal/database/mariadb`), add a
@@ -115,8 +115,8 @@ dialect features, which the new engine needs its own version of:
 ```
 cmd/
   server/          API server (port 8080)
-  migrate/         CLI importing seating files into exams.db
-  room-config/     local room layout editor (Go API + embedded Vite UI, port 8081)
+  migrate/         CLI: import seating files, rename and delete rounds
+  operator/        operator app: terminal UI, or `operator web` (embedded Vite UI, port 8081)
 internal/
   app/             composition root, router + end-to-end API tests
   config/          environment configuration
@@ -126,17 +126,19 @@ internal/
   database/
     sqlite/        SQLite: driver, settings, migrations, every slice's queries (+ SQL tests)
   platform/
-    middleware/    compression, CORS, rate limiting, security headers, auth
+    middleware/    compression, CORS, rate limiting, security headers, local-tool guard
     compression/   content-encoding negotiation and codecs
+    reloadsignal/  $DATA_DIR/.reload: tools ask a running server to reload
+  operator/        operator app web API (router) and tui/ (terminal UI)
   exam/            student schedules, room explorer, calendar feeds
                    handler/ presenter/
   checkex/         on-demand seat lookups from checkex   scrapler/
   room/            room catalog (layouts, images, maps)  filesystem/ handler/ presenter/
-  roomconfig/      room-config tool use cases             filesystem/ handler/
+  roomconfig/      room editing (operator app)            filesystem/ handler/
   round/           cached round list                      handler/
   stats/           analytics dashboard                    handler/
   ingest/          seating file imports                   importer/{pdf,xlsx,jsonfile}/
-  admin/           admin API use cases                    handler/
+  admin/           round management (operator app, CLI)   handler/
 script/            Python helpers (xlsx scraper, enrollment parser)
 docs/              API and environment reference
 ```
@@ -145,14 +147,16 @@ docs/              API and environment reference
 
 | Task | How |
 |------|-----|
-| Import a round | Admin page (`/admin` on the frontend), or `migrate` CLI then reload |
-| Reload after changing data or room files | Admin page "Reload", `POST /api/admin/reload`, or `kill -HUP <pid>` / `docker compose kill -s HUP backend` |
+| Import a round, rename or delete one | Operator app (`operator` in a terminal, or `operator web` through an SSH tunnel), or `migrate` |
+| Edit rooms and seating layouts | Operator app: Rooms tab (`operator web` has the drag-and-drop editor) |
+| Reload after a change | Automatic: the operator app and `migrate` touch `$DATA_DIR/.reload` and the server reloads within 2s. After editing files by hand, `touch $DATA_DIR/.reload` or `kill -HUP <pid>` |
 | Back up | Not done by the app. Back up `$DATA_DIR/exams.db` at the infrastructure level, e.g. snapshot the data volume or run `sqlite3 exams.db ".backup /backups/exams-$(date +%F).db"` from the host on a schedule |
 | Deploy | Every push to `main` publishes `ghcr.io/openkku/cp-examseat-backend:latest` (and `:sha-…`, `:X.Y.Z` for `vX.Y.Z` tags). [openkku/cp-examseat-deployment](https://github.com/openkku/cp-examseat-deployment) runs it with the frontend, scrapler and the KKU VPN behind HTTPS |
 | Serve a checkex round | Set `CHECKEX_ROUNDS` (e.g. `final_1_2569`) and `SCRAPLER_URL`; seats are fetched on first lookup through [scrapler](https://github.com/openkku/akhsakov-scrapler). See [docs/env.md](docs/env.md#9-on-demand-lookup-from-checkex-checkex_-scrapler_url) |
 
-The server needs no restart after an import: rounds, rooms, statistics and
-all response caches are refreshed on reload.
+The server needs no restart after a change: rounds, rooms, statistics and
+all response caches are refreshed on reload. There is no admin API: data is
+only changed by tools run on the server itself.
 
 ## Getting started
 
@@ -167,13 +171,20 @@ go run ./cmd/migrate data/source/final_2_2568.xlsx final_2_2568 "ปลายภ
 go run ./cmd/migrate custom --file data/source/custom/lab.pdf --round final_2_2568 \
   --custom-id FINAL_2_OOP_LAB_2026 --labels LAB,Lab --room-layout CP9421_LAB
 
-# Edit room layouts (build the UI once, then open http://localhost:8081)
-(cd cmd/room-config/frontend && npm ci && npm run build)
-go run ./cmd/room-config          # loopback only; see ROOM_CONFIG_ADDR
+# Rename or delete a round (or one custom dataset)
+go run ./cmd/migrate rename final_2_2568 "ปลายภาค 2/2568"
+go run ./cmd/migrate delete final_2_2568 --custom-id FINAL_2_OOP_LAB_2026
+
+# Operator app in the terminal: rounds (import, rename, delete) and rooms
+go run ./cmd/operator
+
+# ...or in the browser with visual layout editing, import preview, and health checks
+(cd cmd/operator/frontend && npm ci && npm run build)   # once
+go run ./cmd/operator web         # http://localhost:8081, loopback only; see OPERATOR_ADDR
 ```
 
-PDF imports need `pdftotext` (poppler-utils). The server re-reads rounds,
-rooms and statistics at startup, so restart it after importing data.
+PDF imports need `pdftotext` (poppler-utils). A running server picks up every
+change within 2 seconds.
 
 ### Tests
 
@@ -189,9 +200,12 @@ go test ./...
 docker compose up -d --build
 # import data inside the container
 docker compose exec backend ./migrate /app/data/source/final_2_2568.xlsx final_2_2568
+# or the operator app's terminal UI
+docker compose exec -it backend ./operator
 ```
 
-The image contains `server` and `migrate`; mount your data directory at `/app/data`.
+The image contains `server`, `migrate` and `operator`; mount your data
+directory at `/app/data`.
 
 ## Security
 
@@ -202,12 +216,14 @@ The image contains `server` and `migrate`; mount your data directory at `/app/da
 - Every response carries `nosniff`, `X-Frame-Options: DENY`,
   `Referrer-Policy: no-referrer` and a `default-src 'none'` CSP.
 - Room images are served through `http.Dir`, which cannot leave `room/image/`.
-- The room-config tool listens on loopback only, rejects non-loopback `Host`
-  headers, cross-site and non-JSON writes, and bodies over 1 MiB.
+- The public server cannot change data: there is no admin API. Data changes
+  only through the operator app and `migrate`, run on the server.
+- The operator app's terminal UI opens no port. `operator web` listens on
+  loopback only and rejects non-loopback `Host` headers, cross-site writes,
+  non-JSON writes without `X-Operator` (so a cross-site form can't upload),
+  and bodies over 1 MiB (uploads over `MAX_UPLOAD_MB`).
 - Every client IP is rate limited (default 10 req/s, burst 40); the client
   address comes from `X-Forwarded-For` only via `TRUSTED_PROXIES`.
-- The admin API is off unless `ADMIN_TOKEN` is set, compares tokens in
-  constant time, and validates uploaded file types, sizes and IDs.
 - CI runs `govulncheck`, `gosec`, the race detector and fuzz tests for the
   parsers that handle untrusted input.
 

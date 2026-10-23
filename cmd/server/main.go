@@ -30,7 +30,7 @@ func main() {
 		MaxHeaderBytes:    16 << 10, // URLs are short; cap request line + headers at 16 KiB
 	}
 
-	// SIGHUP reloads data after an import, e.g. `docker compose kill -s HUP backend`.
+	// SIGHUP also reloads, e.g. `docker compose kill -s HUP backend` after editing files by hand.
 	hup := make(chan os.Signal, 1)
 	signal.Notify(hup, syscall.SIGHUP)
 	go func() {
@@ -40,6 +40,11 @@ func main() {
 			}
 		}
 	}()
+
+	// The operator app and the migrate CLI touch $DATA_DIR/.reload after a change.
+	watchCtx, stopWatch := context.WithCancel(context.Background())
+	defer stopWatch()
+	go application.WatchReloads(watchCtx, 2*time.Second)
 
 	// Create channel to listen for interrupt/termination signals
 	stop := make(chan os.Signal, 1)

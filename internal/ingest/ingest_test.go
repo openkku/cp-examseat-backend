@@ -63,3 +63,26 @@ func TestIngestRejectsCommaInLabel(t *testing.T) {
 		t.Errorf("rejected import touched the repository: %+v", repo)
 	}
 }
+
+func TestPreviewWritesNothing(t *testing.T) {
+	repo := &fakeRepo{}
+	seats := fakeExtractor{{StudentID: "1"}, {StudentID: "2"}}
+	got, err := NewService(repo, seats).Preview(Options{RoundID: "r"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Errorf("got %d seats, want 2", len(got))
+	}
+	if repo.purgedRound != "" || len(repo.purgedDatasets) != 0 || repo.added != 0 {
+		t.Errorf("repo should be untouched, but was: %+v", repo)
+	}
+}
+
+func TestPreviewRejectsCommaInLabel(t *testing.T) {
+	repo := &fakeRepo{}
+	seats := fakeExtractor{{StudentID: "1", Labels: []string{"ok", "bad,label"}}}
+	if _, err := NewService(repo, seats).Preview(Options{RoundID: "r"}); err == nil {
+		t.Fatal("expected error for label containing a comma in preview")
+	}
+}

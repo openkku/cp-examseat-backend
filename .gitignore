@@ -7,13 +7,13 @@
 *.dylib
 /server
 /migrate
-/room-config
+/operator
 bin/
 
-# Room-config editor UI (dist/.gitkeep keeps the go:embed pattern valid before a build)
+# Operator app UI (dist/.gitkeep keeps the go:embed pattern valid before a build)
 node_modules/
-cmd/room-config/frontend/dist/*
-!cmd/room-config/frontend/dist/.gitkeep
+cmd/operator/frontend/dist/*
+!cmd/operator/frontend/dist/.gitkeep
 
 # SQLite databases and data folder
 *.db

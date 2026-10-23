@@ -117,7 +117,7 @@ jobs:
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 
       - name: gosec (static analysis)
-        run: go run github.com/securego/gosec/v2/cmd/gosec@v2.29.0 -severity medium -confidence medium -exclude-dir=cmd/room-config/frontend ./...
+        run: go run github.com/securego/gosec/v2/cmd/gosec@v2.29.0 -severity medium -confidence medium -exclude-dir=cmd/operator/frontend ./...
 
   fuzz:
     name: Fuzz Tests
@@ -140,12 +140,12 @@ jobs:
           go test ./internal/shared/domain -run '^$' -fuzz '^FuzzCompareRounds$' -fuzztime 30s
           go test ./internal/ingest/importer/pdf -run '^$' -fuzz '^FuzzParsePDFText$' -fuzztime 30s
 
-  room-config-ui:
-    name: Room Config UI Build
+  operator-ui:
+    name: Operator UI (Lint, Test, Build)
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: cmd/room-config/frontend
+        working-directory: cmd/operator/frontend
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v7
@@ -155,10 +155,16 @@ jobs:
         with:
           node-version: 24
           cache: 'npm'
-          cache-dependency-path: cmd/room-config/frontend/package-lock.json
+          cache-dependency-path: cmd/operator/frontend/package-lock.json
 
       - name: Install Dependencies
         run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Run Tests
+        run: npm test
 
       - name: Build
         run: npm run build

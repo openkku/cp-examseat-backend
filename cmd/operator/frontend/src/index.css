@@ -1,0 +1,99 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Prompt:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Inter", "Prompt", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  /* Soft daylight neutrals: warm, readable, and intentionally low contrast. */
+  --color-slate-50: #fbfcfa;
+  --color-slate-100: #f3f6f3;
+  --color-slate-200: #e4ebe7;
+  --color-slate-250: #d8e2dd;
+  --color-slate-300: #cbd7d0;
+  --color-slate-350: #b2c2ba;
+  --color-slate-400: #82938a;
+  --color-slate-450: #6f8177;
+  --color-slate-455: #687a70;
+  --color-slate-500: #5f7167;
+  --color-slate-550: #52635a;
+  --color-slate-600: #45564d;
+  --color-slate-655: #394a41;
+  --color-slate-700: #2f4037;
+  --color-slate-750: #26362e;
+  --color-slate-800: #1d2d25;
+  --color-slate-850: #15231c;
+  --color-slate-900: #102018;
+  --color-slate-950: #09150f;
+
+  --color-blue-450: #38a7e8;
+  --color-rose-450: #fb7185;
+  /* Official College of Computing blue. */
+  --color-faculty: #0047AB;
+  --color-faculty-dark: #003a8a;
+  --color-faculty-light: #e6efff;
+  --text-nano: 0.625rem;
+  --text-xxs: 0.6875rem;
+}
+
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+}
+
+html { background: #f8fbf8; }
+.dark { background: #09150f; color-scheme: dark; }
+
+body {
+  background: #f8fbf8;
+  color: #1d2d25;
+  -webkit-font-smoothing: antialiased;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+.dark body {
+  background: #09150f;
+  color: #eef7f1;
+  --color-slate-400: #a7bbb0;
+  --color-slate-450: #b7c9bf;
+  --color-slate-455: #c9d8d0;
+  --color-slate-500: #a0b5a9;
+}
+
+::selection { background: rgb(0 71 171 / 0.22); color: #102018; }
+.dark ::selection { background: rgba(45, 212, 191, 0.35); color: #ffffff; }
+
+:focus-visible { outline: 3px solid rgb(0 71 171 / 0.38); outline-offset: 3px; }
+.dark :focus-visible { outline: 3px solid rgba(45, 212, 191, 0.7); outline-offset: 3px; }
+
+.pattern-stripes {
+  background-image: repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(82, 99, 90, 0.12) 5px, rgba(82, 99, 90, 0.12) 10px);
+  background-size: 10px 10px;
+}
+.writing-vertical { writing-mode: vertical-rl; text-orientation: mixed; }
+
+.overflow-auto::-webkit-scrollbar, .overflow-y-auto::-webkit-scrollbar, .overflow-x-auto::-webkit-scrollbar { width: 7px; height: 7px; }
+.overflow-auto::-webkit-scrollbar-track, .overflow-y-auto::-webkit-scrollbar-track, .overflow-x-auto::-webkit-scrollbar-track { background: transparent; }
+.overflow-auto::-webkit-scrollbar-thumb, .overflow-y-auto::-webkit-scrollbar-thumb, .overflow-x-auto::-webkit-scrollbar-thumb { background: #cbd7d0; border-radius: 9999px; }
+.dark .overflow-auto::-webkit-scrollbar-thumb, .dark .overflow-y-auto::-webkit-scrollbar-thumb, .dark .overflow-x-auto::-webkit-scrollbar-thumb { background: #2f4037; }
+
+@keyframes radar-ping { 0% { box-shadow: 0 0 0 0 rgb(20 184 166 / .55); } 70% { box-shadow: 0 0 0 11px rgb(20 184 166 / 0); } 100% { box-shadow: 0 0 0 0 rgb(20 184 166 / 0); } }
+@keyframes slide-up { from { transform: translateY(12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes grow-up { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes shimmer { from { background-position: -200% 0; } to { background-position: 200% 0; } }
+.animate-radar { animation: radar-ping 1.5s cubic-bezier(0, 0, .2, 1) infinite; }
+.animate-slide-up { animation: slide-up .42s cubic-bezier(.16, 1, .3, 1) both; }
+.animate-grow-up { animation: grow-up .6s cubic-bezier(.34, 1.3, .64, 1) forwards; }
+.staggered-entrance > * { opacity: 0; animation: slide-up .42s cubic-bezier(.16, 1, .3, 1) forwards; }
+.staggered-entrance > *:nth-child(1) { animation-delay: 40ms; }.staggered-entrance > *:nth-child(2) { animation-delay: 80ms; }.staggered-entrance > *:nth-child(3) { animation-delay: 120ms; }.staggered-entrance > *:nth-child(4) { animation-delay: 160ms; }.staggered-entrance > *:nth-child(5) { animation-delay: 200ms; }.staggered-entrance > *:nth-child(6) { animation-delay: 240ms; }
+.shimmer { background: linear-gradient(90deg, #f3f6f3 25%, #e4ebe7 50%, #f3f6f3 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite linear; }
+.dark .shimmer { background: linear-gradient(90deg, #102018 25%, #1d2d25 50%, #102018 75%); background-size: 200% 100%; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
+}

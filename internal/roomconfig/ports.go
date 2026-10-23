@@ -20,3 +20,11 @@ type Store interface {
 	WriteLayout(filename string, data []byte) error
 	RemoveLayout(filename string) error
 }
+
+// Publisher tells the running server that room files changed, so it reloads
+// them.
+//
+// Implemented by platform/reloadsignal.Notifier.
+type Publisher interface {
+	RoomsChanged() error
+}

@@ -3,7 +3,10 @@ package ingest
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
+
+	"github.com/openkku/cp-examseat-backend/internal/shared/domain"
 )
 
 // Service imports seating files into a Repository.
@@ -22,11 +25,32 @@ func (s *Service) SupportedExtension(ext string) bool {
 	return s.extractor.Supports(ext)
 }
 
+// Preview extracts the seats of opts.FilePath and validates them without writing to repository.
+func (s *Service) Preview(opts Options) ([]domain.Seat, error) {
+	seats, err := s.extractor.Extract(opts.FilePath, Params{
+		RoundID:    opts.RoundID,
+		Labels:     opts.Labels,
+		RoomLayout: opts.RoomLayout,
+		CustomID:   opts.CustomID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, seat := range seats {
+		for _, label := range seat.Labels {
+			if strings.Contains(label, ",") {
+				return nil, fmt.Errorf("label %q contains a comma", label)
+			}
+		}
+	}
+	return seats, nil
+}
+
 // Ingest extracts the seats of opts.FilePath and replaces the matching data:
 // the custom datasets it contains when any seat carries a custom ID, otherwise
 // the round's in-schedule sessions. It returns the number of seats saved.
 func (s *Service) Ingest(ctx context.Context, opts Options) (int, error) {
-	fmt.Printf("📦 Ingesting file [%s] for round '%s' (Custom ID: '%s', Labels: %v)\n", opts.FilePath, opts.RoundID, opts.CustomID, opts.Labels)
+	log.Printf("📦 Ingesting file [%s] for round '%s' (Custom ID: '%s', Labels: %v)", opts.FilePath, opts.RoundID, opts.CustomID, opts.Labels)
 
 	seats, err := s.extractor.Extract(opts.FilePath, Params{
 		RoundID:    opts.RoundID,
@@ -60,23 +84,23 @@ func (s *Service) Ingest(ctx context.Context, opts Options) (int, error) {
 
 	if len(customIDsToPurge) > 0 {
 		for cid := range customIDsToPurge {
-			fmt.Printf("   > Purging old entries for round '%s' and custom_id '%s'...\n", opts.RoundID, cid)
+			log.Printf("   > Purging old entries for round '%s' and custom_id '%s'...", opts.RoundID, cid)
 			if err := s.repo.PurgeCustomDataset(ctx, opts.RoundID, cid); err != nil {
 				return 0, fmt.Errorf("failed to purge custom dataset '%s': %w", cid, err)
 			}
 		}
 	} else {
-		fmt.Printf("   > Purging old entries for round '%s'...\n", opts.RoundID)
+		log.Printf("   > Purging old entries for round '%s'...", opts.RoundID)
 		if err := s.repo.PurgeRound(ctx, opts.RoundID); err != nil {
 			return 0, fmt.Errorf("failed to purge round: %w", err)
 		}
 	}
 
-	fmt.Printf("   > Saving %d seats into database...\n", len(seats))
+	log.Printf("   > Saving %d seats into database...", len(seats))
 	if err := s.repo.AddRound(ctx, opts.RoundID, opts.DisplayName, seats); err != nil {
 		return 0, fmt.Errorf("failed to save round seats: %w", err)
 	}
 
-	fmt.Printf("✅ Ingestion complete! Successfully saved %d seats for round '%s'.\n", len(seats), opts.RoundID)
+	log.Printf("✅ Ingestion complete! Successfully saved %d seats for round '%s'.", len(seats), opts.RoundID)
 	return len(seats), nil
 }

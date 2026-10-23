@@ -9,17 +9,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/openkku/cp-examseat-backend/internal/admin"
-	adminhandler "github.com/openkku/cp-examseat-backend/internal/admin/handler"
 	"github.com/openkku/cp-examseat-backend/internal/checkex"
 	"github.com/openkku/cp-examseat-backend/internal/checkex/scrapler"
 	"github.com/openkku/cp-examseat-backend/internal/config"
 	"github.com/openkku/cp-examseat-backend/internal/database/sqlite"
 	"github.com/openkku/cp-examseat-backend/internal/exam"
 	examhandler "github.com/openkku/cp-examseat-backend/internal/exam/handler"
-	"github.com/openkku/cp-examseat-backend/internal/ingest"
-	"github.com/openkku/cp-examseat-backend/internal/ingest/importer"
 	"github.com/openkku/cp-examseat-backend/internal/platform/middleware"
+	"github.com/openkku/cp-examseat-backend/internal/platform/reloadsignal"
 	"github.com/openkku/cp-examseat-backend/internal/room"
 	roomfs "github.com/openkku/cp-examseat-backend/internal/room/filesystem"
 	roomhandler "github.com/openkku/cp-examseat-backend/internal/room/handler"
@@ -42,8 +39,10 @@ type App struct {
 	// clearCaches drops the cached responses after data changed.
 	clearCaches []func()
 
-	mu         sync.Mutex
-	lastReload time.Time
+	// dataDir holds the .reload marker watched by WatchReloads.
+	dataDir string
+	// reloading serializes reloads from SIGHUP and the .reload marker.
+	reloading sync.Mutex
 }
 
 // New opens the database, loads rounds, rooms and analytics, and builds the router.
@@ -54,10 +53,11 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	}
 
 	a := &App{
-		db:     db,
-		rounds: round.NewService(db),
-		stats:  stats.NewService(db),
-		rooms:  room.NewService(roomfs.Loader{RoomDir: cfg.RoomDir(), ImageBaseURL: cfg.ImageBaseURL}),
+		db:      db,
+		dataDir: cfg.DataDir,
+		rounds:  round.NewService(db),
+		stats:   stats.NewService(db),
+		rooms:   room.NewService(roomfs.Loader{RoomDir: cfg.RoomDir(), ImageBaseURL: cfg.ImageBaseURL}),
 		// On-demand lookups from checkex for CHECKEX_ROUNDS (nil, i.e. disabled, when unset).
 		checkex: checkex.New(checkex.Options{
 			Rounds:         cfg.Checkex.Rounds,
@@ -75,7 +75,6 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		upstream = a.checkex
 	}
 	exams := exam.NewService(db, upstream, a.rooms)
-	admins := admin.NewService(db, db, ingest.NewService(db, importer.Registry{}), a.rooms, a)
 
 	clientIPs := middleware.NewClientIPResolver(cfg.TrustedProxies)
 	exploreCache := httpx.NewResponseCache(10_000, 5*time.Minute)
@@ -90,18 +89,13 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		Room:     roomhandler.New(a.rooms, roomCache, cfg.ImageDir()),
 		Round:    roundhandler.New(a.rounds),
 		Stats:    statshandler.New(a.stats),
-		Admin:    adminhandler.New(admins, cfg.MaxUploadBytes),
 	}, routerOptions{
 		AllowedOrigins: cfg.CORSAllowedOrigins,
 		RateLimit:      middleware.RateLimit(cfg.RateLimitRPS, cfg.RateLimitBurst, clientIPs),
-		AdminToken:     cfg.AdminToken,
 	})
 
 	if a.checkex != nil {
 		log.Printf("🔎 checkex lookups enabled for %v via %s", cfg.Checkex.Rounds, cfg.Checkex.ScraplerURL)
-	}
-	if cfg.AdminToken == "" {
-		log.Println("ℹ️  ADMIN_TOKEN is not set: the admin API is disabled")
 	}
 	return a, nil
 }
@@ -115,14 +109,14 @@ func (a *App) loadData(ctx context.Context) {
 	if err := a.stats.Refresh(ctx, a.rounds.Labels()); err != nil {
 		log.Printf("⚠️ Warning: Could not generate stats: %v", err)
 	}
-	a.mu.Lock()
-	a.lastReload = time.Now().UTC()
-	a.mu.Unlock()
 }
 
 // Reload re-reads rounds, statistics and room files and clears every
 // response cache, so imported data shows up without a restart.
 func (a *App) Reload(ctx context.Context) error {
+	a.reloading.Lock()
+	defer a.reloading.Unlock()
+
 	a.rooms.Reload()
 	a.registerCheckexRounds(ctx)
 	if err := a.rounds.Load(ctx); err != nil {
@@ -135,26 +129,22 @@ func (a *App) Reload(ctx context.Context) error {
 		clear()
 	}
 
-	a.mu.Lock()
-	a.lastReload = time.Now().UTC()
-	a.mu.Unlock()
 	log.Println("🔄 Data reloaded")
 	return nil
 }
 
 // registerCheckexRounds makes checkex rounds appear in the round list (again,
-// after an admin deleted one) before any of their seats are fetched.
+// after an operator deleted one) before any of their seats are fetched.
 func (a *App) registerCheckexRounds(ctx context.Context) {
 	if err := a.checkex.RegisterRounds(ctx); err != nil {
 		log.Printf("⚠️ Warning: Could not register checkex rounds: %v", err)
 	}
 }
 
-// LastReload is when data was last (re)loaded.
-func (a *App) LastReload() time.Time {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.lastReload
+// WatchReloads reloads whenever a tool touches $DATA_DIR/.reload (see
+// platform/reloadsignal), checking every interval until ctx is done.
+func (a *App) WatchReloads(ctx context.Context, interval time.Duration) {
+	reloadsignal.Watch(ctx, a.dataDir, interval, a.Reload)
 }
 
 // Close releases the database.

@@ -2,9 +2,10 @@ package admin
 
 import (
 	"context"
+	"fmt"
 	"regexp"
+	"slices"
 	"strings"
-	"time"
 
 	"github.com/openkku/cp-examseat-backend/internal/ingest"
 	"github.com/openkku/cp-examseat-backend/internal/shared/domain"
@@ -21,27 +22,12 @@ type Service struct {
 	repo     Repository
 	datasets DatasetPurger
 	importer Importer
-	rooms    Rooms
 	reloader Reloader
 }
 
 // NewService creates a Service.
-func NewService(repo Repository, datasets DatasetPurger, importer Importer, rooms Rooms, reloader Reloader) *Service {
-	return &Service{repo: repo, datasets: datasets, importer: importer, rooms: rooms, reloader: reloader}
-}
-
-// Status reports the loaded rooms and when data was last reloaded.
-func (s *Service) Status() Status {
-	return Status{
-		Rooms:           s.rooms.Count(),
-		RoomsConfigured: s.rooms.ConfiguredCount(),
-		LastReload:      s.reloader.LastReload(),
-	}
-}
-
-// LastReload is when data was last (re)loaded.
-func (s *Service) LastReload() time.Time {
-	return s.reloader.LastReload()
+func NewService(repo Repository, datasets DatasetPurger, importer Importer, reloader Reloader) *Service {
+	return &Service{repo: repo, datasets: datasets, importer: importer, reloader: reloader}
 }
 
 // Rounds lists every round with its seat and student counts, newest first.
@@ -127,7 +113,162 @@ func (s *Service) Import(ctx context.Context, req ImportRequest) (int, error) {
 	return saved, s.Reload(ctx)
 }
 
-// Reload re-reads the in-memory state; a failure is returned as *ReloadError.
+// PreviewImport validates a seating file and previews its contents and replacement impact
+// without committing changes to the database.
+func (s *Service) PreviewImport(ctx context.Context, req ImportRequest) (ImportPreview, error) {
+	if err := s.ValidateImport(req.Round, req.CustomID, req.RoomLayout); err != nil {
+		return ImportPreview{}, err
+	}
+	display := req.Display
+	if display == "" {
+		display = domain.DefaultRoundLabel(req.Round)
+	}
+
+	seats, err := s.importer.Preview(ingest.Options{
+		FilePath:    req.FilePath,
+		RoundID:     req.Round,
+		DisplayName: display,
+		Labels:      req.Labels,
+		RoomLayout:  req.RoomLayout,
+		CustomID:    req.CustomID,
+	})
+	if err != nil {
+		return ImportPreview{}, err
+	}
+
+	studentSet := make(map[string]bool)
+	roomSet := make(map[string]bool)
+	dateSet := make(map[string]bool)
+	sessionSet := make(map[string]bool)
+	customIDSet := make(map[string]bool)
+
+	if req.CustomID != "" {
+		customIDSet[req.CustomID] = true
+	}
+
+	for _, seat := range seats {
+		if seat.StudentID != "" {
+			studentSet[seat.StudentID] = true
+		}
+		if seat.Room != "" {
+			roomSet[seat.Room] = true
+		}
+		if seat.Date != "" {
+			dateSet[seat.Date] = true
+		}
+		if seat.CustomID != "" {
+			customIDSet[seat.CustomID] = true
+		}
+
+		cat := seat.ResolveCategory()
+		d := seat.Date
+		tStart := seat.TimeStart
+		tEnd := seat.TimeEnd
+		if tStart == "" && seat.Time != "" {
+			tStart, tEnd = domain.SplitTime(seat.Time)
+		}
+		sessionKey := fmt.Sprintf("%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s",
+			req.Round, cat, seat.CustomID, seat.Sheet, d, tStart, tEnd,
+			seat.Room, seat.Subject, seat.Section, seat.Note, seat.RoomLayout)
+		sessionSet[sessionKey] = true
+	}
+
+	rooms := make([]string, 0, len(roomSet))
+	for r := range roomSet {
+		rooms = append(rooms, r)
+	}
+	slices.Sort(rooms)
+
+	dates := make([]string, 0, len(dateSet))
+	for d := range dateSet {
+		dates = append(dates, d)
+	}
+	slices.Sort(dates)
+
+	customIDs := make([]string, 0, len(customIDSet))
+	for cid := range customIDSet {
+		customIDs = append(customIDs, cid)
+	}
+	slices.Sort(customIDs)
+
+	var replaces []ReplaceTarget
+	summaries, err := s.repo.RoundSummaries(ctx)
+	if err == nil {
+		var roundSummary *RoundSummary
+		for i := range summaries {
+			if summaries[i].ID == req.Round {
+				roundSummary = &summaries[i]
+				break
+			}
+		}
+
+		if len(customIDs) > 0 {
+			for _, cid := range customIDs {
+				currentSeats := 0
+				if roundSummary != nil {
+					for _, cd := range roundSummary.CustomDatasets {
+						if cd.ID == cid {
+							currentSeats = cd.Seats
+							break
+						}
+					}
+				}
+				replaces = append(replaces, ReplaceTarget{
+					Type:  "custom_dataset",
+					ID:    cid,
+					Seats: currentSeats,
+				})
+			}
+		} else {
+			inSchedule := 0
+			if roundSummary != nil {
+				inSchedule = roundSummary.InScheduleSeats
+			}
+			replaces = append(replaces, ReplaceTarget{
+				Type:  "in_schedule",
+				ID:    req.Round,
+				Seats: inSchedule,
+			})
+		}
+	}
+
+	sampleLimit := 20
+	if len(seats) < sampleLimit {
+		sampleLimit = len(seats)
+	}
+	rows := make([]PreviewRow, sampleLimit)
+	for i, seat := range seats[:sampleLimit] {
+		t := seat.Time
+		if t == "" && seat.TimeStart != "" {
+			t = seat.TimeStart
+			if seat.TimeEnd != "" {
+				t += "-" + seat.TimeEnd
+			}
+		}
+		labels := seat.Labels
+		if labels == nil {
+			labels = []string{}
+		}
+		rows[i] = PreviewRow{
+			Sheet: seat.Sheet, Date: seat.Date, Time: t, Room: seat.Room,
+			Subject: seat.Subject, SubjectName: seat.SubjectName, Section: seat.Section,
+			StudentID: seat.StudentID, Seat: seat.Seat, CustomID: seat.CustomID, Labels: labels,
+		}
+	}
+
+	return ImportPreview{
+		Seats:     len(seats),
+		Students:  len(studentSet),
+		Rooms:     rooms,
+		Dates:     dates,
+		Sessions:  len(sessionSet),
+		CustomIDs: customIDs,
+		Replaces:  replaces,
+		Rows:      rows,
+	}, nil
+}
+
+// Reload asks the server to reload; a failure is returned as *ReloadError.
 func (s *Service) Reload(ctx context.Context) error {
 	if err := s.reloader.Reload(ctx); err != nil {
 		return &ReloadError{Err: err}

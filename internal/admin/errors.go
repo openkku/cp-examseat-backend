@@ -9,7 +9,7 @@ func (e *InvalidInputError) Error() string { return e.Message }
 
 func invalid(message string) error { return &InvalidInputError{Message: message} }
 
-// ReloadError means a change was saved but reloading the in-memory state failed.
+// ReloadError means a change was saved but asking the server to reload failed.
 type ReloadError struct {
 	Err error
 }

@@ -5,9 +5,9 @@ package admin
 
 import (
 	"context"
-	"time"
 
 	"github.com/openkku/cp-examseat-backend/internal/ingest"
+	"github.com/openkku/cp-examseat-backend/internal/shared/domain"
 )
 
 // Repository manages stored rounds. Operations on an unknown round return
@@ -34,21 +34,13 @@ type DatasetPurger interface {
 type Importer interface {
 	SupportedExtension(ext string) bool
 	Ingest(ctx context.Context, opts ingest.Options) (int, error)
+	Preview(opts ingest.Options) ([]domain.Seat, error)
 }
 
-// Rooms counts the rooms of the catalog.
+// Reloader asks the running server to refresh its in-memory state (rounds,
+// rooms, statistics, caches) after data changes.
 //
-// Implemented by room.Service.
-type Rooms interface {
-	Count() int
-	ConfiguredCount() int
-}
-
-// Reloader refreshes the in-memory state (rounds, rooms, statistics, caches)
-// after data changes.
-//
-// Implemented by app.App.
+// Implemented by platform/reloadsignal.Notifier.
 type Reloader interface {
 	Reload(ctx context.Context) error
-	LastReload() time.Time
 }

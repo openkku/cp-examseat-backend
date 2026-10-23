@@ -1,5 +1,16 @@
 # ----------------------------
-# Stage 1: Build the Go binaries
+# Stage 1: Build the operator app's web UI
+# ----------------------------
+FROM node:24-alpine AS operator-ui
+
+WORKDIR /ui
+COPY cmd/operator/frontend/package.json cmd/operator/frontend/package-lock.json ./
+RUN npm ci
+COPY cmd/operator/frontend/ ./
+RUN npm run build
+
+# ----------------------------
+# Stage 2: Build the Go binaries
 # ----------------------------
 FROM golang:1.27-alpine AS builder
 
@@ -12,12 +23,16 @@ RUN go mod download
 # Copy the rest of the Go source code
 COPY . .
 
-# Build the API server and the data import CLI
+# The operator binary embeds the web UI built above
+COPY --from=operator-ui /ui/dist ./cmd/operator/frontend/dist
+
+# Build the API server, the data import CLI and the operator app
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/server ./cmd/server \
- && CGO_ENABLED=0 GOOS=linux go build -o /out/migrate ./cmd/migrate
+ && CGO_ENABLED=0 GOOS=linux go build -o /out/migrate ./cmd/migrate \
+ && CGO_ENABLED=0 GOOS=linux go build -o /out/operator ./cmd/operator
 
 # ----------------------------
-# Stage 2: Final Production Image
+# Stage 3: Final Production Image
 # ----------------------------
 FROM alpine:latest
 
@@ -30,7 +45,7 @@ RUN apk --no-cache add ca-certificates poppler-utils
 ENV DATA_DIR=/app/data \
     PORT=8080
 
-COPY --from=builder /out/server /out/migrate ./
+COPY --from=builder /out/server /out/migrate /out/operator ./
 
 EXPOSE 8080
 

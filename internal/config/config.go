@@ -32,9 +32,7 @@ type Config struct {
 	// shorthands; default "loopback,private" suits a backend behind the frontend.
 	TrustedProxies []string
 
-	// AdminToken enables the /api/admin API when set (ADMIN_TOKEN).
-	AdminToken string
-	// MaxUploadBytes bounds admin import uploads (MAX_UPLOAD_MB, default 20).
+	// MaxUploadBytes bounds operator app imports (MAX_UPLOAD_MB, default 20).
 	MaxUploadBytes int64
 
 	// Checkex configures on-demand seat lookups from checkex through scrapler.
@@ -72,7 +70,6 @@ func Load() Config {
 		RateLimitRPS:       getFloat("RATE_LIMIT_RPS", 10),
 		RateLimitBurst:     getInt("RATE_LIMIT_BURST", 40),
 		TrustedProxies:     splitList(getEnv("TRUSTED_PROXIES", "loopback,private")),
-		AdminToken:         os.Getenv("ADMIN_TOKEN"),
 		MaxUploadBytes:     int64(getInt("MAX_UPLOAD_MB", 20)) << 20,
 		Checkex: Checkex{
 			ScraplerURL: strings.TrimRight(getEnv("SCRAPLER_URL", "http://127.0.0.1:8090"), "/"),

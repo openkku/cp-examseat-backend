@@ -15,7 +15,6 @@ deflate) according to `Accept-Encoding`.
 | `GET /api/stats` | `stats/handler.Handler.Index` | Analytics dashboard |
 | `GET /api/room` | `room/handler.Handler.Index` | Room layouts and images |
 | `GET /room/image/*` | `room/handler.Handler.Image` | Room images from `$DATA_DIR/room/image` |
-| `/api/admin/*` | `admin/handler.Handler` | Import and data management (see [Admin API](#admin-api)) |
 
 Every route except `/healthz` is rate limited per client; over the limit
 the API answers `429 {"error": "Too many requests, please slow down"}` with a
@@ -162,23 +161,36 @@ when `IMAGE_BASE_URL` points image URLs at a CDN.
 
 ---
 
-## Admin API
+## No admin API
 
-Enabled only when `ADMIN_TOKEN` is set; otherwise every `/api/admin` path is
-404. Every request needs `Authorization: Bearer <ADMIN_TOKEN>` (401
-otherwise). Changes are applied immediately: each write reloads rounds,
-rooms and statistics and clears the response caches. The API takes no
-backups; back up `exams.db` outside the app.
+The public server only reads. Rounds, seating files and rooms are managed with
+the operator app (`cmd/operator`) or `cmd/migrate` on the server, and the
+server reloads within 2 seconds when they touch `$DATA_DIR/.reload`. Back up
+`exams.db` outside the app.
+
+## Operator app API (`operator web`)
+
+Served on loopback only (`OPERATOR_ADDR`, default `127.0.0.1:8081`), for the
+operator app's own UI. Writes must be JSON, or carry `X-Operator: 1` for the
+seating-file upload.
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /api/admin/status` | `{rooms, rooms_configured, last_reload, max_upload_mb}` |
-| `GET /api/admin/rounds` | `[{id, label, seats, students, in_schedule_seats, custom_datasets: [{id, seats}]}]` |
-| `PATCH /api/admin/rounds/{round}` | Rename: `{"label": "..."}` |
-| `DELETE /api/admin/rounds/{round}` | Delete a round and everything in it |
-| `DELETE /api/admin/rounds/{round}?custom_id=ID` | Delete one out-of-schedule dataset |
-| `POST /api/admin/import` | `multipart/form-data`: `file` (.xlsx, .xls, .pdf, .json), `round`, optional `display`, `labels` (comma-separated), `room_layout`, `custom_id`. Same replace semantics as `cmd/migrate`. Returns `{round, seats, reloaded_at}` |
-| `POST /api/admin/reload` | Reload data and room files from disk |
+| `GET /api/rounds` | `[{id, label, seats, students, in_schedule_seats, custom_datasets: [{id, seats}]}]` |
+| `PATCH /api/rounds/{round}` | Rename: `{"label": "..."}` |
+| `DELETE /api/rounds/{round}` | Delete a round and everything in it |
+| `DELETE /api/rounds/{round}?custom_id=ID` | Delete one out-of-schedule dataset |
+| `POST /api/rounds/import` | `multipart/form-data`: `file` (.xlsx, .xls, .pdf, .json), `round`, optional `display`, `labels` (comma-separated), `room_layout`, `custom_id`. Same replace semantics as `cmd/migrate`. Returns `{round, seats}` |
+| `POST /api/rounds/import/preview` | `multipart/form-data`: same parameters as import; parses without writing to DB and returns preview counts (seats, students, rooms, dates), replace targets, and the first 20 sample rows. Requires `X-Operator: 1` |
+| `POST /api/rounds/reload` | Ask the server to reload data and room files |
+| `GET /api/rooms` | `room/metadata.json` |
+| `POST /api/rooms/{roomId}` | Create or replace a room entry |
+| `DELETE /api/rooms/{roomId}` | Remove a room (and its layout file if unused) |
+| `GET /api/rooms/layouts/{file}` | A layout file from `room/map/` |
+| `POST /api/rooms/layouts/{file}` | Save a layout file (must be a JSON object); returns `{"success": true, "seats": N}` |
+| `GET /api/preview/options` | Cascading preview filters (`type=dates|times`, `round`, `room`, optional `date`) |
+| `GET /api/preview/seats` | Student roster for layout preview (`round`, `room`, `date`, `time`); returns `[{seat, student_id, subject, section}]` |
+| `GET /api/health` | Data health checks across rounds, metadata, layouts, and image assets |
 
 IDs (`round`, `custom_id`, `room_layout`) may contain letters, digits, `_`
 and `-` (max 64). Import errors return 422 with the extractor's message;

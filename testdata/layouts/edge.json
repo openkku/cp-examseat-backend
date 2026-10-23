@@ -1,0 +1,14 @@
+{
+  "layout": [
+    {
+      "type": "column",
+      "items": [
+        {"type": "seats", "char": "A", "count": 2},
+        {"type": "seats", "char": "A", "manual": [], "count": 5},
+        {"type": "seats", "char": "A", "count": 1},
+        {"type": "seats", "char": "B", "start": 1, "count": 3, "inverse": true},
+        {"type": "seats", "char": "B", "count": 2}
+      ]
+    }
+  ]
+}
