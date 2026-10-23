@@ -83,6 +83,23 @@ func (r *ClientIPResolver) ClientIP(req *http.Request) string {
 	return peer
 }
 
+// ResolveClientAddr replaces RemoteAddr with the client address r resolves,
+// so everything after it, the access log included, sees the visitor instead
+// of the proxy in front (the Next.js frontend). Resolving again later gives
+// the same address.
+func ResolveClientAddr(r *ClientIPResolver) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			port := "0"
+			if _, p, err := net.SplitHostPort(req.RemoteAddr); err == nil {
+				port = p
+			}
+			req.RemoteAddr = net.JoinHostPort(r.ClientIP(req), port)
+			next.ServeHTTP(w, req)
+		})
+	}
+}
+
 // RateLimiter applies a token bucket per client IP.
 type RateLimiter struct {
 	limit       rate.Limit

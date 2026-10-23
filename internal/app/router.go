@@ -27,6 +27,9 @@ type handlers struct {
 // routerOptions configures cross-cutting behavior of the API router.
 type routerOptions struct {
 	AllowedOrigins []string
+	// ClientIPs, when set, makes RemoteAddr the visitor's address (behind
+	// trusted proxies) before anything logs or limits the request.
+	ClientIPs *middleware.ClientIPResolver
 	// RateLimit is applied to every route except /healthz.
 	RateLimit func(http.Handler) http.Handler
 }
@@ -35,6 +38,9 @@ type routerOptions struct {
 func newRouter(c handlers, opts routerOptions) http.Handler {
 	r := chi.NewRouter()
 
+	if opts.ClientIPs != nil {
+		r.Use(middleware.ResolveClientAddr(opts.ClientIPs))
+	}
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
 	r.Use(middleware.SecurityHeaders)

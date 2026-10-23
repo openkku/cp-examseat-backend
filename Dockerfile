@@ -5,7 +5,8 @@ FROM node:24-alpine AS operator-ui
 
 WORKDIR /ui
 COPY cmd/operator/frontend/package.json cmd/operator/frontend/package-lock.json ./
-RUN npm ci
+# Cache mounts speed up local rebuilds; they never end up in the image.
+RUN --mount=type=cache,target=/root/.npm npm ci
 COPY cmd/operator/frontend/ ./
 RUN npm run build
 
@@ -26,8 +27,11 @@ COPY . .
 # The operator binary embeds the web UI built above
 COPY --from=operator-ui /ui/dist ./cmd/operator/frontend/dist
 
-# Build the API server, the data import CLI and the operator app
-RUN CGO_ENABLED=0 GOOS=linux go build -o /out/server ./cmd/server \
+# Build the API server, the data import CLI and the operator app. The Go build
+# cache is kept between builds, so only changed packages recompile. (Modules
+# stay in the layer above, which CI's layer cache restores.)
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -o /out/server ./cmd/server \
  && CGO_ENABLED=0 GOOS=linux go build -o /out/migrate ./cmd/migrate \
  && CGO_ENABLED=0 GOOS=linux go build -o /out/operator ./cmd/operator
 

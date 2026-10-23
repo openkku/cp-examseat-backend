@@ -207,6 +207,10 @@ docker compose exec -it backend ./operator
 The image contains `server`, `migrate` and `operator`; mount your data
 directory at `/app/data`.
 
+Local rebuilds keep the Go build cache and npm's download cache in build
+cache mounts, so a code change only recompiles what changed. They never end
+up in the image; `docker builder prune` (or `podman builder prune`) clears them.
+
 ## Security
 
 - SQL is fully parameterized; `internal/app/security_test.go` exercises

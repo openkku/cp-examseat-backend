@@ -91,6 +91,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		Stats:    statshandler.New(a.stats),
 	}, routerOptions{
 		AllowedOrigins: cfg.CORSAllowedOrigins,
+		ClientIPs:      clientIPs,
 		RateLimit:      middleware.RateLimit(cfg.RateLimitRPS, cfg.RateLimitBurst, clientIPs),
 	})
 

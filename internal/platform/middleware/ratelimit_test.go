@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -35,6 +36,46 @@ func TestClientIP(t *testing.T) {
 			}
 			if got := r.ClientIP(req); got != tc.want {
 				t.Errorf("ClientIP = %q; want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestResolveClientAddr(t *testing.T) {
+	r := NewClientIPResolver([]string{"loopback", "private", "d000::/112"})
+
+	tests := []struct {
+		name   string
+		remote string
+		xff    string
+		want   string
+	}{
+		// nginx → frontend container → backend, as in the compose stack.
+		{"visitor behind the frontend", "[d000::3]:41234", "198.51.100.9", "198.51.100.9:41234"},
+		{"visitor on a LAN behind the frontend", "[d000::3]:41234", "192.168.1.20", "192.168.1.20:41234"},
+		{"direct client", "198.51.100.1:5000", "1.2.3.4", "198.51.100.1:5000"},
+		{"ipv6 visitor", "[d000::3]:41234", "2001:db8::1", "[2001:db8::1]:41234"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/", nil)
+			req.RemoteAddr = tc.remote
+			if tc.xff != "" {
+				req.Header.Set("X-Forwarded-For", tc.xff)
+			}
+			var seen, again string
+			h := ResolveClientAddr(r)(http.HandlerFunc(func(_ http.ResponseWriter, req *http.Request) {
+				seen = req.RemoteAddr
+				again = r.ClientIP(req)
+			}))
+			h.ServeHTTP(httptest.NewRecorder(), req)
+
+			if seen != tc.want {
+				t.Errorf("RemoteAddr = %q; want %q", seen, tc.want)
+			}
+			// Handlers that resolve again (rate limit, checkex caps) get the same client.
+			if host, _, _ := net.SplitHostPort(tc.want); again != host {
+				t.Errorf("resolving again = %q; want %q", again, host)
 			}
 		})
 	}
