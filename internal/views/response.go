@@ -6,6 +6,7 @@ package views
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 )
 
 // ErrorResponse is the JSON body of every API error.
@@ -31,4 +32,17 @@ func NotFound(w http.ResponseWriter, message string) {
 		message = "No data found"
 	}
 	Error(w, message, http.StatusNotFound)
+}
+
+// QueuedResponse is the 202 body of a lookup still waiting in the checkex queue.
+type QueuedResponse struct {
+	Queued     bool `json:"queued"`
+	Position   int  `json:"position"`
+	RetryAfter int  `json:"retry_after"`
+}
+
+// Queued tells the client its lookup is still queued upstream and when to ask again.
+func Queued(w http.ResponseWriter, position int, retryAfter int) {
+	w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
+	JSON(w, http.StatusAccepted, QueuedResponse{Queued: true, Position: position, RetryAfter: retryAfter})
 }

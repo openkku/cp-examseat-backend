@@ -13,6 +13,7 @@ import (
 	"github.com/openkku/cp-examseat-backend/internal/controllers"
 	"github.com/openkku/cp-examseat-backend/internal/middleware"
 	"github.com/openkku/cp-examseat-backend/internal/repositories/filesystem"
+	"github.com/openkku/cp-examseat-backend/internal/repositories/scrapler"
 	"github.com/openkku/cp-examseat-backend/internal/repositories/sqlite"
 	"github.com/openkku/cp-examseat-backend/internal/routes"
 	"github.com/openkku/cp-examseat-backend/internal/services"
@@ -29,6 +30,7 @@ type App struct {
 	stats    *services.StatsService
 	rooms    *services.RoomService
 	backups  *services.BackupService
+	checkex  *services.CheckexService
 	caches   []*views.ResponseCache
 	calendar *controllers.CalendarController
 
@@ -50,17 +52,27 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		stats:   services.NewStatsService(db),
 		rooms:   services.NewRoomService(filesystem.LoadRoomCatalog(cfg.RoomDir(), cfg.ImageBaseURL)),
 		backups: services.NewBackupService(db, cfg.BackupDir, cfg.BackupKeep),
+		// On-demand lookups from checkex for CHECKEX_ROUNDS (nil, i.e. disabled, when unset).
+		checkex: services.NewCheckexService(services.CheckexOptions{
+			Rounds:         cfg.Checkex.Rounds,
+			RoundLabels:    cfg.Checkex.RoundLabels,
+			IDPrefixes:     cfg.Checkex.IDPrefixes,
+			NotFoundTTL:    cfg.Checkex.NotFoundTTL,
+			NotFoundLimit:  cfg.Checkex.NotFoundPerIP,
+			NotFoundWindow: cfg.Checkex.NotFoundWindow,
+		}, db, scrapler.NewClient(cfg.Checkex.ScraplerURL)),
 	}
 	a.loadData(ctx)
 
+	clientIPs := middleware.NewClientIPResolver(cfg.TrustedProxies)
 	exams := services.NewExamService(db, a.rooms)
 	exploreCache := views.NewResponseCache(10_000, 5*time.Minute)
 	roomCache := views.NewResponseCache(10_000, 5*time.Minute)
 	a.caches = []*views.ResponseCache{exploreCache, roomCache}
-	a.calendar = controllers.NewCalendarController(exams)
+	a.calendar = controllers.NewCalendarController(exams, a.checkex, clientIPs.ClientIP)
 
 	a.Handler = routes.New(routes.Controllers{
-		Exam:     controllers.NewExamController(exams),
+		Exam:     controllers.NewExamController(exams, a.checkex, clientIPs.ClientIP),
 		Explore:  controllers.NewExploreController(exams, exploreCache),
 		Calendar: a.calendar,
 		Room:     controllers.NewRoomController(a.rooms, roomCache, cfg.ImageDir()),
@@ -69,10 +81,13 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		Admin:    controllers.NewAdminController(db, services.NewIngestService(db), a.backups, a.rooms, a, cfg.MaxUploadBytes),
 	}, routes.Options{
 		AllowedOrigins: cfg.CORSAllowedOrigins,
-		RateLimit:      middleware.RateLimit(cfg.RateLimitRPS, cfg.RateLimitBurst, middleware.NewClientIPResolver(cfg.TrustedProxies)),
+		RateLimit:      middleware.RateLimit(cfg.RateLimitRPS, cfg.RateLimitBurst, clientIPs),
 		AdminToken:     cfg.AdminToken,
 	})
 
+	if a.checkex != nil {
+		log.Printf("🔎 checkex lookups enabled for %v via %s", cfg.Checkex.Rounds, cfg.Checkex.ScraplerURL)
+	}
 	if cfg.AdminToken == "" {
 		log.Println("ℹ️  ADMIN_TOKEN is not set: the admin API is disabled")
 	}
@@ -81,6 +96,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 
 // loadData (re)reads rounds and statistics from the database.
 func (a *App) loadData(ctx context.Context) {
+	a.registerCheckexRounds(ctx)
 	if err := a.rounds.Load(ctx); err != nil {
 		log.Println("⚠️ Warning: Could not load rounds:", err)
 	}
@@ -96,6 +112,7 @@ func (a *App) loadData(ctx context.Context) {
 // response cache, so imported data shows up without a restart.
 func (a *App) Reload(ctx context.Context) error {
 	a.rooms.Replace(filesystem.LoadRoomCatalog(a.cfg.RoomDir(), a.cfg.ImageBaseURL))
+	a.registerCheckexRounds(ctx)
 	if err := a.rounds.Load(ctx); err != nil {
 		return err
 	}
@@ -112,6 +129,14 @@ func (a *App) Reload(ctx context.Context) error {
 	a.mu.Unlock()
 	log.Println("🔄 Data reloaded")
 	return nil
+}
+
+// registerCheckexRounds makes checkex rounds appear in the round list (again,
+// after an admin deleted one) before any of their seats are fetched.
+func (a *App) registerCheckexRounds(ctx context.Context) {
+	if err := a.checkex.RegisterRounds(ctx); err != nil {
+		log.Printf("⚠️ Warning: Could not register checkex rounds: %v", err)
+	}
 }
 
 // LastReload is when data was last (re)loaded.

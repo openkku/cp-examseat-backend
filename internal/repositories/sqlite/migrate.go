@@ -99,6 +99,14 @@ func (d *Database) migrate(ctx context.Context) error {
     );
     CREATE INDEX IF NOT EXISTS idx_seats_student ON exam_seats(student_id);
     CREATE INDEX IF NOT EXISTS idx_seats_session ON exam_seats(session_id);
+
+    CREATE TABLE IF NOT EXISTS upstream_lookups (
+        exam_round TEXT NOT NULL,
+        student_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        fetched_at INTEGER NOT NULL,
+        PRIMARY KEY (exam_round, student_id)
+    );
     `
 
 	if _, err := conn.ExecContext(ctx, schema); err != nil {

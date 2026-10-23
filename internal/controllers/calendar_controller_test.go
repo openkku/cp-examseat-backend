@@ -26,7 +26,7 @@ func (m *mockDB) GetSeatsByID(ctx context.Context, opts models.SeatQuery) ([]mod
 }
 
 func newCalendarController(db models.ExamRepository) *CalendarController {
-	return NewCalendarController(services.NewExamService(db, nil))
+	return NewCalendarController(services.NewExamService(db, nil), nil, nil)
 }
 
 func TestHandleGetCalendarFeed_NoData(t *testing.T) {

@@ -36,8 +36,15 @@ the API answers `429 {"error": "Too many requests, please slow down"}` with a
 | Status | Body |
 |--------|------|
 | 200 | `ExamSchedule[]` ordered by date and start time |
+| 202 | `{"queued": true, "position": 3, "retry_after": 5}` — checkex lookup still queued; ask again after `Retry-After` seconds |
 | 400 | `Student ID and Round are required` |
 | 404 | `No exam schedules found` |
+| 429 | Too many not-found checkex lookups from this visitor (or the global rate limit) |
+| 503 | The checkex lookup queue is full; retry later |
+
+For rounds served by checkex (`CHECKEX_ROUNDS`, see
+[env.md](env.md#9-on-demand-lookup-from-checkex-checkex_-scrapler_url)) a
+student not in the database yet is fetched on the first request.
 
 `ExamSchedule`:
 
@@ -66,7 +73,8 @@ the API answers `429 {"error": "Too many requests, please slow down"}` with a
 
 Returns `text/calendar` as an attachment named `exams-{id}.ics` covering every
 round, refreshed by calendar clients every 12 hours. Exams without a date or
-start time are skipped.
+start time are skipped. Students not fetched from checkex yet are fetched
+first.
 
 | Status | Body |
 |--------|------|

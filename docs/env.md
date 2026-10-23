@@ -17,6 +17,13 @@ This document describes the environment variables supported by the CP Exam Seat 
 | `BACKUP_DIR` | *(empty)* | `cmd/server` |
 | `BACKUP_INTERVAL` | `24h` | `cmd/server` |
 | `BACKUP_KEEP` | `7` | `cmd/server` |
+| `SCRAPLER_URL` | `http://127.0.0.1:8090` | `cmd/server` |
+| `CHECKEX_ROUNDS` | *(empty)* | `cmd/server` |
+| `CHECKEX_ROUND_LABELS` | *(derived)* | `cmd/server` |
+| `CHECKEX_ID_PREFIXES` | `68,69` | `cmd/server` |
+| `CHECKEX_NOTFOUND_TTL` | `6h` | `cmd/server` |
+| `CHECKEX_NOTFOUND_PER_IP` | `5` | `cmd/server` |
+| `CHECKEX_NOTFOUND_WINDOW` | `1h` | `cmd/server` |
 
 ---
 
@@ -123,6 +130,58 @@ With `BACKUP_DIR` set the server writes a consistent snapshot of `exams.db`
 every admin import or delete, keeping the newest `BACKUP_KEEP` files named
 `exams-YYYYMMDD-HHMMSS.mmm.db`. Put it on a different volume from `DATA_DIR`.
 To restore, stop the server and copy a backup over `exams.db`.
+
+---
+
+## 9. On-demand lookup from checkex: `CHECKEX_*`, `SCRAPLER_URL`
+
+From 1/2569 the faculty publishes seats only on
+`checkex.computing.kku.ac.th`, which is reachable only through KKU's VPN and
+looks up one student ID at a time. For rounds listed in `CHECKEX_ROUNDS`, the
+backend fetches a student's seats the first time someone looks them up,
+stores them in `exams.db` and serves them from the database after that.
+
+The scraping itself runs in a separate service, **scrapler**
+([openkku/akhsakov-scrapler](https://github.com/openkku/akhsakov-scrapler)),
+which sits in the VPN's network namespace. scrapler owns the upstream pacing,
+the lookup queue and the back-off; the backend owns the database cache, the
+round list, the ID policy and the per-visitor not-found limit. The whole
+stack (VPN, scrapler, backend, frontend) is in
+[openkku/cp-examseat-deployment](https://github.com/openkku/cp-examseat-deployment).
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `CHECKEX_ROUNDS` | empty (feature off) | Comma-separated round IDs served by checkex, e.g. `final_1_2569`. Other rounds never go upstream. |
+| `CHECKEX_ROUND_LABELS` | derived (`final_1_2569` → `ปลายภาค 1/2569`) | Optional `id=label;id=label` overrides. An existing label (e.g. renamed in `/admin`) is kept. |
+| `CHECKEX_ID_PREFIXES` | `68,69` | Only 10-digit IDs starting with these are sent upstream. **Bump to `69,70` for 2570** (see `TODO(2570)` in `internal/config/config.go`). |
+| `CHECKEX_NOTFOUND_TTL` | `6h` | How long a "not found" answer is trusted before that ID may be asked again. |
+| `CHECKEX_NOTFOUND_PER_IP` | `5` | "Not found" answers one visitor can cause per window. `0` turns the limit off. |
+| `CHECKEX_NOTFOUND_WINDOW` | `1h` | Window of the limit above. The budget refills evenly over it (one slot every 12 minutes by default). |
+| `SCRAPLER_URL` | `http://127.0.0.1:8090` | scrapler base URL. |
+
+Behaviour:
+
+- **Found:** fetched once per (round, student) and never refreshed. To force
+  a refetch, delete the round (admin page) or purge it; the lookups recorded
+  in `upstream_lookups` are cleared with it.
+- **Already imported:** students with in-schedule seats imported another way
+  (Excel, JSON) are never asked upstream. Custom (out-of-schedule) datasets
+  don't count, since upstream still has the regular exams.
+- **Queue:** a search waits for its turn in scrapler (up to scrapler's
+  `SCRAPLER_MAX_WAIT`, 20s by default). If it isn't done by then,
+  `/api/exam` answers `202` with `{"queued": true, "position": N,
+  "retry_after": 5}`; the lookup keeps running in scrapler and the retry
+  stores its answer. Identical concurrent lookups share one call.
+- **Per-visitor limit:** real students look up IDs that exist, while scripts
+  walking ID ranges mostly get "not found". After `CHECKEX_NOTFOUND_PER_IP`
+  not-found answers in the window, a visitor's searches for IDs not stored
+  yet get `429` and aren't sent to scrapler. IDs already in the database
+  still work for them. The visitor is the client IP from section 6, so
+  `TRUSTED_PROXIES` must be right, or every visitor shares one budget.
+- **Errors** (scrapler or VPN down, unexpected page) are never cached, so
+  the next request retries. The search shows "no data" meanwhile, and the
+  calendar feed is served without caching.
+- **Stats** (`/api/stats`) include fetched students after the next reload.
 
 ---
 

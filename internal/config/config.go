@@ -43,6 +43,30 @@ type Config struct {
 	BackupInterval time.Duration
 	// BackupKeep is the number of scheduled backups kept (BACKUP_KEEP, default 7).
 	BackupKeep int
+
+	// Checkex configures on-demand seat lookups from checkex through scrapler.
+	Checkex Checkex
+}
+
+// Checkex configures on-demand seat lookups from checkex.computing.kku.ac.th
+// through the scrapler service (see docs/env.md).
+type Checkex struct {
+	// ScraplerURL is the scrapler base URL (SCRAPLER_URL, default http://127.0.0.1:8090).
+	ScraplerURL string
+	// Rounds are the round IDs served by checkex (CHECKEX_ROUNDS, comma-separated).
+	// Empty disables the feature.
+	Rounds []string
+	// RoundLabels overrides derived round labels (CHECKEX_ROUND_LABELS, "id=label;id=label").
+	RoundLabels map[string]string
+	// IDPrefixes are the intake years sent upstream (CHECKEX_ID_PREFIXES, default "68,69").
+	IDPrefixes []string
+	// NotFoundTTL is how long a "not found" answer is trusted (CHECKEX_NOTFOUND_TTL, default 6h).
+	NotFoundTTL time.Duration
+	// NotFoundPerIP is the not-found answers one visitor may cause per window
+	// (CHECKEX_NOTFOUND_PER_IP, default 5; 0 disables the limit).
+	NotFoundPerIP int
+	// NotFoundWindow is the window of NotFoundPerIP (CHECKEX_NOTFOUND_WINDOW, default 1h).
+	NotFoundWindow time.Duration
 }
 
 // Load reads the configuration from the environment, applying defaults.
@@ -60,7 +84,28 @@ func Load() Config {
 		BackupDir:          os.Getenv("BACKUP_DIR"),
 		BackupInterval:     getDuration("BACKUP_INTERVAL", 24*time.Hour),
 		BackupKeep:         getInt("BACKUP_KEEP", 7),
+		Checkex: Checkex{
+			ScraplerURL: strings.TrimRight(getEnv("SCRAPLER_URL", "http://127.0.0.1:8090"), "/"),
+			Rounds:      splitList(os.Getenv("CHECKEX_ROUNDS")),
+			RoundLabels: parseLabels(os.Getenv("CHECKEX_ROUND_LABELS")),
+			// TODO(2570): bump intake prefixes to "69,70" for the next academic year.
+			IDPrefixes:     splitList(getEnv("CHECKEX_ID_PREFIXES", "68,69")),
+			NotFoundTTL:    getDuration("CHECKEX_NOTFOUND_TTL", 6*time.Hour),
+			NotFoundPerIP:  getInt("CHECKEX_NOTFOUND_PER_IP", 5),
+			NotFoundWindow: getDuration("CHECKEX_NOTFOUND_WINDOW", time.Hour),
+		},
 	}
+}
+
+// parseLabels parses "final_1_2569=ปลายภาค 1/2569;mid_2_2569=...".
+func parseLabels(raw string) map[string]string {
+	labels := map[string]string{}
+	for _, pair := range strings.Split(raw, ";") {
+		if k, v, ok := strings.Cut(pair, "="); ok && strings.TrimSpace(k) != "" {
+			labels[strings.TrimSpace(k)] = strings.TrimSpace(v)
+		}
+	}
+	return labels
 }
 
 // DatabasePath is the location of the SQLite database file.

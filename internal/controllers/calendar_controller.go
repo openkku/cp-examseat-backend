@@ -20,16 +20,21 @@ var filenameSafe = regexp.MustCompile(`[^0-9-]+`)
 
 // CalendarController serves per-student iCalendar subscription feeds.
 type CalendarController struct {
-	exams *services.ExamService
+	exams    *services.ExamService
+	checkex  *services.CheckexService
+	clientIP ClientIPFunc
 	// feeds caches rendered .ics files per normalized student ID,
 	// retaining each for 10 minutes since last access.
 	feeds *otter.Cache[string, []byte]
 }
 
-// NewCalendarController creates a CalendarController.
-func NewCalendarController(exams *services.ExamService) *CalendarController {
+// NewCalendarController creates a CalendarController. checkex may be nil,
+// which disables on-demand lookups from checkex.
+func NewCalendarController(exams *services.ExamService, checkex *services.CheckexService, clientIP ClientIPFunc) *CalendarController {
 	return &CalendarController{
-		exams: exams,
+		exams:    exams,
+		checkex:  checkex,
+		clientIP: clientIP,
 		feeds: otter.Must(&otter.Options[string, []byte]{
 			MaximumSize:      5000,
 			ExpiryCalculator: otter.ExpiryAccessing[string, []byte](10 * time.Minute),
@@ -63,6 +68,10 @@ func (c *CalendarController) Show(w http.ResponseWriter, r *http.Request) {
 
 	ics, ok := c.feeds.GetIfPresent(id)
 	if !ok {
+		// Feeds aren't round-scoped, so make sure every checkex round is fetched.
+		// Don't cache a feed built while an upstream fetch failed.
+		upstreamErr := c.checkex.EnsureAll(r.Context(), id, clientIP(c.clientIP, r))
+
 		seats, err := c.exams.StudentSchedule(r.Context(), id, nil)
 		if err != nil {
 			log.Printf("Error querying exams for calendar: %v", err)
@@ -82,7 +91,9 @@ func (c *CalendarController) Show(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		c.feeds.Set(id, ics)
+		if upstreamErr == nil {
+			c.feeds.Set(id, ics)
+		}
 	}
 
 	// Only digits and dashes reach the Content-Disposition filename.

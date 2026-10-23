@@ -24,6 +24,9 @@ func (d *Database) PurgeRound(ctx context.Context, roundID string) error {
 	if _, err := tx.ExecContext(ctx, "DELETE FROM subjects WHERE exam_round = ?", roundID); err != nil {
 		return fmt.Errorf("failed to clear existing subjects: %w", err)
 	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM upstream_lookups WHERE exam_round = ?", roundID); err != nil {
+		return fmt.Errorf("failed to clear upstream lookups: %w", err)
+	}
 
 	var count int
 	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM exam_sessions WHERE exam_round = ?", roundID).Scan(&count); err == nil && count == 0 {
