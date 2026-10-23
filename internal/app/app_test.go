@@ -15,8 +15,9 @@ import (
 	"github.com/klauspost/compress/gzip"
 
 	"github.com/openkku/cp-examseat-backend/internal/config"
-	"github.com/openkku/cp-examseat-backend/internal/models"
-	"github.com/openkku/cp-examseat-backend/internal/repositories/sqlite"
+	ingestdb "github.com/openkku/cp-examseat-backend/internal/ingest/database"
+	"github.com/openkku/cp-examseat-backend/internal/platform/database/sqlite"
+	"github.com/openkku/cp-examseat-backend/internal/shared/domain"
 )
 
 func writeFile(t *testing.T, path, content string) {
@@ -44,16 +45,16 @@ func newTestServer(t *testing.T, cfg config.Config) *httptest.Server {
 	writeFile(t, filepath.Join(dataDir, "room", "image", "CP.9127.jpg"), "JPEG")
 	writeFile(t, filepath.Join(dataDir, "secret.txt"), "SECRET")
 
-	db, err := sqlite.New(cfg.DatabasePath())
+	db, err := sqlite.Open(cfg.DatabasePath())
 	if err != nil {
 		t.Fatal(err)
 	}
-	seats := []models.Seat{
+	seats := []domain.Seat{
 		{Sheet: "S1", Date: "2026-09-01", Time: "08.30-11.30", Room: "CP.9127", Subject: "CP1001", SubjectName: "Intro", Section: "1", StudentID: "6533801234", Seat: "A1", Branch: "CP-CS"},
 		{Sheet: "S1", Date: "2026-09-01", Time: "08.30-11.30", Room: "CP.9127", Subject: "CP1001", SubjectName: "Intro", Section: "1", StudentID: "6533801235", Seat: "A2", Branch: "CP-AI"},
 		{Sheet: "S2", Date: "2026-09-02", Time: "13.00-16.00", Room: "UNMAPPED", Subject: "SC2002", SubjectName: "Physics", Section: "2", StudentID: "6533801234", Seat: "B1"},
 	}
-	if err := db.AddRound(context.Background(), "mid_1_2569", "กลางภาค 1/2569", seats); err != nil {
+	if err := ingestdb.New(db).AddRound(context.Background(), "mid_1_2569", "กลางภาค 1/2569", seats); err != nil {
 		t.Fatal(err)
 	}
 	db.Close()

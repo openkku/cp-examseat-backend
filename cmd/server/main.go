@@ -30,10 +30,6 @@ func main() {
 		MaxHeaderBytes:    16 << 10, // URLs are short; cap request line + headers at 16 KiB
 	}
 
-	backupCtx, stopBackups := context.WithCancel(context.Background())
-	defer stopBackups()
-	go application.RunBackups(backupCtx)
-
 	// SIGHUP reloads data after an import, e.g. `docker compose kill -s HUP backend`.
 	hup := make(chan os.Signal, 1)
 	signal.Notify(hup, syscall.SIGHUP)

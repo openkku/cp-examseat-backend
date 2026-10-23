@@ -4,18 +4,18 @@ All endpoints are `GET` and public. JSON errors have the shape
 `{"error": "<message>"}`. Responses are compressed (zstd, br, gzip or
 deflate) according to `Accept-Encoding`.
 
-| Endpoint | Controller | Description |
+| Endpoint | Handler | Description |
 |----------|------------|-------------|
-| `GET /healthz` | `controllers.Health` | Liveness probe |
-| `GET /api/rounds` | `RoundController.Index` | Exam rounds, newest first |
-| `GET /api/exam` | `ExamController.Show` | A student's exam schedule |
-| `GET /api/calendar/{id}` | `CalendarController.Show` | iCalendar feed of a student |
-| `GET /api/explore` | `ExploreController.Index` | Roster of one room and exam slot |
-| `GET /api/options` | `ExploreController.Options` | Cascading explorer filter options |
-| `GET /api/stats` | `StatsController.Index` | Analytics dashboard |
-| `GET /api/room` | `RoomController.Index` | Room layouts and images |
-| `GET /room/image/*` | `RoomController.Image` | Room images from `$DATA_DIR/room/image` |
-| `/api/admin/*` | `AdminController` | Import and data management (see [Admin API](#admin-api)) |
+| `GET /healthz` | `httpx.Health` | Liveness probe |
+| `GET /api/rounds` | `round/handler.Handler.Index` | Exam rounds, newest first |
+| `GET /api/exam` | `exam/handler.Exam.Show` | A student's exam schedule |
+| `GET /api/calendar/{id}` | `exam/handler.Calendar.Show` | iCalendar feed of a student |
+| `GET /api/explore` | `exam/handler.Explore.Index` | Roster of one room and exam slot |
+| `GET /api/options` | `exam/handler.Explore.Options` | Cascading explorer filter options |
+| `GET /api/stats` | `stats/handler.Handler.Index` | Analytics dashboard |
+| `GET /api/room` | `room/handler.Handler.Index` | Room layouts and images |
+| `GET /room/image/*` | `room/handler.Handler.Image` | Room images from `$DATA_DIR/room/image` |
+| `/api/admin/*` | `admin/handler.Handler` | Import and data management (see [Admin API](#admin-api)) |
 
 Every route except `/healthz` is rate limited per client; over the limit
 the API answers `429 {"error": "Too many requests, please slow down"}` with a
@@ -167,20 +167,18 @@ when `IMAGE_BASE_URL` points image URLs at a CDN.
 Enabled only when `ADMIN_TOKEN` is set; otherwise every `/api/admin` path is
 404. Every request needs `Authorization: Bearer <ADMIN_TOKEN>` (401
 otherwise). Changes are applied immediately: each write reloads rounds,
-rooms and statistics and clears the response caches. With `BACKUP_DIR` set,
-imports and deletes take a safety backup first.
+rooms and statistics and clears the response caches. The API takes no
+backups; back up `exams.db` outside the app.
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /api/admin/status` | `{rooms, rooms_configured, last_reload, backups_enabled, backups: [{name, size, created_at}], max_upload_mb}` |
+| `GET /api/admin/status` | `{rooms, rooms_configured, last_reload, max_upload_mb}` |
 | `GET /api/admin/rounds` | `[{id, label, seats, students, in_schedule_seats, custom_datasets: [{id, seats}]}]` |
 | `PATCH /api/admin/rounds/{round}` | Rename: `{"label": "..."}` |
 | `DELETE /api/admin/rounds/{round}` | Delete a round and everything in it |
 | `DELETE /api/admin/rounds/{round}?custom_id=ID` | Delete one out-of-schedule dataset |
 | `POST /api/admin/import` | `multipart/form-data`: `file` (.xlsx, .xls, .pdf, .json), `round`, optional `display`, `labels` (comma-separated), `room_layout`, `custom_id`. Same replace semantics as `cmd/migrate`. Returns `{round, seats, reloaded_at}` |
 | `POST /api/admin/reload` | Reload data and room files from disk |
-| `POST /api/admin/backups` | Write a backup into `BACKUP_DIR` (409 if not configured) |
-| `GET /api/admin/backup` | Download a fresh snapshot of `exams.db` |
 
 IDs (`round`, `custom_id`, `room_layout`) may contain letters, digits, `_`
 and `-` (max 64). Import errors return 422 with the extractor's message;

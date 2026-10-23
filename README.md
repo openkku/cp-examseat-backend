@@ -13,40 +13,67 @@ lives in [openkku/cp-examseat-frontend](https://github.com/openkku/cp-examseat-f
 SQLite ([modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite), no CGO) ·
 [otter](https://github.com/maypok86/otter) in-memory caches · zstd/brotli/gzip compression.
 
-## Architecture — MVC
+## Architecture — clean architecture, one slice per feature
+
+The code is grouped by feature. Each slice has a **core** (domain types, use
+cases and the interfaces, or *ports*, it needs) and **adapters** in
+subpackages that plug the core into HTTP, the database, files or other
+services:
 
 ```
-HTTP request
-    │
-    ▼
-routes/            URL → controller action, middleware (logger, recoverer, CORS, compression)
-    │
-    ▼
-controllers/  (C)  parse + validate the request, call a service, pick a view
-    │         ▲
-    ▼         │
-services/     (M)  application logic, in-memory state loaded at startup (rounds, rooms, stats)
-    │
-    ▼
-models/       (M)  domain entities + rules (Seat, Round, Room, Dashboard, ID normalization,
-    │              round ordering, analytics), repository interfaces
-    ▼
-repositories/ (M)  persistence: sqlite/ (exams.db), filesystem/ (room/*.json), scrapler/ (checkex over HTTP)
-
-views/        (V)  representations: JSON payloads, error bodies, iCalendar (.ics),
-                   cached pre-compressed responses
+               HTTP request
+                    │
+                    ▼
+   internal/app ── router (chi, middleware) ── composition root: wires cores to adapters
+                    │
+        ┌───────────┴─────────────────────────────────────────────┐
+        ▼                                                         ▼
+  <slice>/handler   parse + validate the request,           <slice>/presenter  wire format
+                    call the core, map errors to statuses                      (JSON, .ics)
+        │
+        ▼
+  <slice>           core: entities, rules, use cases (Service) and ports
+        ▲           — imports only the standard library, shared/domain and other cores
+        │ implements a port
+  <slice>/database   SQL through database/sql (engine-neutral)
+  <slice>/filesystem room JSON files
+  checkex/scrapler   checkex lookups over HTTP
+  ingest/importer    pdf / xlsx / json seat extractors
 ```
 
-Rules the layers follow:
+The dependency rule: **adapters depend on cores, never the other way round.**
+The compiler enforces it, because a core package can't import its own
+subpackages without an import cycle. In practice:
 
-- **Controllers** never touch the database or format bodies themselves; they
-  only talk to services and views.
-- **Models** know nothing about HTTP or storage engines. `models.ExamRepository`
-  is the persistence contract; `repositories/sqlite` implements it.
-- **Views** own the wire format. For example `views.ExamSchedule` is the public
-  shape of a seat, independent of the `models.Seat` entity.
-- **`internal/app`** is the composition root that wires everything together;
-  there is no global mutable state.
+- A core never imports `net/http`, `database/sql`, chi or an adapter package.
+  Each port is declared in the core that uses it (`exam.Repository`,
+  `checkex.Source`, `ingest.Extractor`, …), and each adapter has a
+  compile-time check that it implements the port.
+- Handlers depend on small interfaces of their own, not on `*Service`, so
+  they're easy to test with fakes.
+- **`internal/app`** is the composition root. It's the only place that knows
+  which adapter implements which port. There is no global mutable state.
+
+### Database engines
+
+Slice adapters are named `database`. They talk to the database only through
+`database/sql` and `platform/database`, and never import a driver. Everything
+SQLite-specific (the modernc driver, DSN pragmas, schema migrations) lives in
+`platform/database/sqlite`. Only `internal/app` and `cmd/migrate` import it.
+The SQL tests in `platform/database/sqlite` run every slice's queries against
+SQLite.
+
+To add another engine (for example `platform/database/postgres`), add a
+sibling package with an `Open` that returns a `*database.DB` and its own
+schema, and choose it in `internal/app`. The slice queries still use these
+SQLite/MySQL-isms, which a new engine needs to handle:
+
+- `?` placeholders
+- `INSERT OR IGNORE` (ingest, checkex)
+- `GROUP_CONCAT` (`platform/database.SeatSelect`)
+- `res.LastInsertId()` (ingest, checkex)
+- the `rowid` ordering of rounds (`platform/database.Rounds`)
+- `IS ?` comparisons (checkex)
 
 ### Layout
 
@@ -56,17 +83,25 @@ cmd/
   migrate/         CLI importing seating files into exams.db
   room-config/     local room layout editor (Go API + embedded Vite UI, port 8081)
 internal/
-  app/             composition root + end-to-end API tests
+  app/             composition root, router + end-to-end API tests
   config/          environment configuration
-  routes/          router definitions
-  middleware/      compression, CORS
-  controllers/     exam, explore, calendar, room, round, stats, room-config
-  services/        exam, round, room, stats, ingest, checkex
-  models/          entities, domain rules, repository contract
-  repositories/    sqlite/ and filesystem/ implementations, scrapler/ (checkex lookup client)
-  views/           JSON / ICS rendering and response cache
-  compression/     content-encoding negotiation and codecs
-  importers/       pdf/, xlsx/, jsonfile/ seat extractors
+  shared/
+    domain/        shared kernel: Seat, Round, labels, student IDs, Thai dates
+    httpx/         JSON/error bodies, cached pre-compressed responses, parameter limits
+  platform/
+    database/      engine-neutral DB handle and shared seat/round row helpers
+      sqlite/      SQLite engine: driver, connection settings, migrations (+ SQL tests)
+    middleware/    compression, CORS, rate limiting, security headers, auth
+    compression/   content-encoding negotiation and codecs
+  exam/            student schedules, room explorer, calendar feeds
+                   database/ handler/ presenter/
+  checkex/         on-demand seat lookups from checkex   database/ scrapler/
+  room/            room catalog (layouts, images, maps)  filesystem/ handler/ presenter/
+  roomconfig/      room-config tool use cases             filesystem/ handler/
+  round/           cached round list                      database/ handler/
+  stats/           analytics dashboard                    database/ handler/
+  ingest/          seating file imports                   database/ importer/{pdf,xlsx,jsonfile}/
+  admin/           admin API use cases                    database/ handler/
 script/            Python helpers (xlsx scraper, enrollment parser)
 docs/              API and environment reference
 ```
@@ -77,7 +112,7 @@ docs/              API and environment reference
 |------|-----|
 | Import a round | Admin page (`/admin` on the frontend), or `migrate` CLI then reload |
 | Reload after changing data or room files | Admin page "Reload", `POST /api/admin/reload`, or `kill -HUP <pid>` / `docker compose kill -s HUP backend` |
-| Back up | Automatic with `BACKUP_DIR`; on demand from the admin page or `go run ./cmd/migrate backup <file>` |
+| Back up | Not done by the app. Back up `$DATA_DIR/exams.db` at the infrastructure level, e.g. snapshot the data volume or run `sqlite3 exams.db ".backup /backups/exams-$(date +%F).db"` from the host on a schedule |
 | Deploy | Every push to `main` publishes `ghcr.io/openkku/cp-examseat-backend:latest` (and `:sha-…`, `:X.Y.Z` for `vX.Y.Z` tags). [openkku/cp-examseat-deployment](https://github.com/openkku/cp-examseat-deployment) runs it with the frontend, scrapler and the KKU VPN behind HTTPS |
 | Serve a checkex round | Set `CHECKEX_ROUNDS` (e.g. `final_1_2569`) and `SCRAPLER_URL`; seats are fetched on first lookup through [scrapler](https://github.com/openkku/akhsakov-scrapler). See [docs/env.md](docs/env.md#9-on-demand-lookup-from-checkex-checkex_-scrapler_url) |
 

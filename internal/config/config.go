@@ -37,13 +37,6 @@ type Config struct {
 	// MaxUploadBytes bounds admin import uploads (MAX_UPLOAD_MB, default 20).
 	MaxUploadBytes int64
 
-	// BackupDir enables scheduled SQLite backups when set (BACKUP_DIR).
-	BackupDir string
-	// BackupInterval is the time between scheduled backups (BACKUP_INTERVAL, default 24h).
-	BackupInterval time.Duration
-	// BackupKeep is the number of scheduled backups kept (BACKUP_KEEP, default 7).
-	BackupKeep int
-
 	// Checkex configures on-demand seat lookups from checkex through scrapler.
 	Checkex Checkex
 }
@@ -81,9 +74,6 @@ func Load() Config {
 		TrustedProxies:     splitList(getEnv("TRUSTED_PROXIES", "loopback,private")),
 		AdminToken:         os.Getenv("ADMIN_TOKEN"),
 		MaxUploadBytes:     int64(getInt("MAX_UPLOAD_MB", 20)) << 20,
-		BackupDir:          os.Getenv("BACKUP_DIR"),
-		BackupInterval:     getDuration("BACKUP_INTERVAL", 24*time.Hour),
-		BackupKeep:         getInt("BACKUP_KEEP", 7),
 		Checkex: Checkex{
 			ScraplerURL: strings.TrimRight(getEnv("SCRAPLER_URL", "http://127.0.0.1:8090"), "/"),
 			Rounds:      splitList(os.Getenv("CHECKEX_ROUNDS")),

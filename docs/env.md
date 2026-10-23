@@ -14,9 +14,6 @@ This document describes the environment variables supported by the CP Exam Seat 
 | `TRUSTED_PROXIES` | `loopback,private` | `cmd/server` |
 | `ADMIN_TOKEN` | *(empty)* | `cmd/server` |
 | `MAX_UPLOAD_MB` | `20` | `cmd/server` |
-| `BACKUP_DIR` | *(empty)* | `cmd/server` |
-| `BACKUP_INTERVAL` | `24h` | `cmd/server` |
-| `BACKUP_KEEP` | `7` | `cmd/server` |
 | `SCRAPLER_URL` | `http://127.0.0.1:8090` | `cmd/server` |
 | `CHECKEX_ROUNDS` | *(empty)* | `cmd/server` |
 | `CHECKEX_ROUND_LABELS` | *(derived)* | `cmd/server` |
@@ -123,13 +120,20 @@ used by the frontend's `/admin` page. Requests must send
 
 ---
 
-## 8. Backups: `BACKUP_DIR`, `BACKUP_INTERVAL`, `BACKUP_KEEP`
+## 8. Backups
 
-With `BACKUP_DIR` set the server writes a consistent snapshot of `exams.db`
-(`VACUUM INTO`) every `BACKUP_INTERVAL` (Go duration, e.g. `6h`) and before
-every admin import or delete, keeping the newest `BACKUP_KEEP` files named
-`exams-YYYYMMDD-HHMMSS.mmm.db`. Put it on a different volume from `DATA_DIR`.
-To restore, stop the server and copy a backup over `exams.db`.
+The server takes no backups and has no backup settings (the former
+`BACKUP_DIR`, `BACKUP_INTERVAL` and `BACKUP_KEEP` are ignored). Back up
+`$DATA_DIR/exams.db` at the infrastructure level instead. For example,
+snapshot the data volume, or run the following from the host on a schedule
+(safe while the server runs):
+
+```bash
+sqlite3 "$DATA_DIR/exams.db" ".backup '/backups/exams-$(date +%F).db'"
+```
+
+Keep the copies on a different volume from `DATA_DIR`. To restore, stop the
+server and copy a backup over `exams.db`.
 
 ---
 

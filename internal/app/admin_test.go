@@ -143,9 +143,8 @@ func TestAdminImportValidation(t *testing.T) {
 	}
 }
 
-func TestAdminRenameDeleteAndBackups(t *testing.T) {
-	backupDir := filepath.Join(t.TempDir(), "backups")
-	srv := newTestServer(t, config.Config{AdminToken: adminToken, MaxUploadBytes: 1 << 20, BackupDir: backupDir, BackupKeep: 10})
+func TestAdminRenameAndDelete(t *testing.T) {
+	srv := newTestServer(t, config.Config{AdminToken: adminToken, MaxUploadBytes: 1 << 20})
 	c := adminClient{t, srv}
 
 	c.upload(map[string]string{"round": "mid_1_2569", "custom_id": "LAB_X"}, "lab.json", importJSON)
@@ -182,22 +181,15 @@ func TestAdminRenameDeleteAndBackups(t *testing.T) {
 		t.Errorf("delete missing round = %d", status)
 	}
 
-	// Import and both deletes each took a safety backup first.
-	entries, _ := os.ReadDir(backupDir)
-	if len(entries) != 3 {
-		t.Errorf("safety backups = %d; want 3", len(entries))
+	// Backups are not the app's job: the old endpoints are gone.
+	if status, _ := c.do(http.MethodPost, "/api/admin/backups", nil, ""); status != http.StatusNotFound && status != http.StatusMethodNotAllowed {
+		t.Errorf("POST /api/admin/backups = %d; want 404/405", status)
 	}
-
-	if status, body := c.do(http.MethodPost, "/api/admin/backups", nil, ""); status != http.StatusCreated {
-		t.Errorf("create backup = %d %s", status, body)
+	if status, _ := c.do(http.MethodGet, "/api/admin/backup", nil, ""); status != http.StatusNotFound && status != http.StatusMethodNotAllowed {
+		t.Errorf("GET /api/admin/backup = %d; want 404/405", status)
 	}
-	status, body := c.do(http.MethodGet, "/api/admin/backup", nil, "")
-	if status != http.StatusOK || !strings.HasPrefix(body, "SQLite format 3") {
-		t.Errorf("backup download = %d %q", status, body[:min(len(body), 20)])
-	}
-
-	status, body = c.do(http.MethodGet, "/api/admin/status", nil, "")
-	if status != http.StatusOK || !strings.Contains(body, `"backups_enabled":true`) {
+	status, body := c.do(http.MethodGet, "/api/admin/status", nil, "")
+	if status != http.StatusOK || strings.Contains(body, "backup") {
 		t.Errorf("status = %d %s", status, body)
 	}
 }

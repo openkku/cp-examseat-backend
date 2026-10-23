@@ -134,11 +134,11 @@ jobs:
 
       - name: Fuzz untrusted-input parsers
         run: |
-          go test ./internal/compression -run '^$' -fuzz '^FuzzNegotiate$' -fuzztime 30s
-          go test ./internal/models -run '^$' -fuzz '^FuzzNormalizeStudentID$' -fuzztime 30s
-          go test ./internal/models -run '^$' -fuzz '^FuzzParseLabels$' -fuzztime 30s
-          go test ./internal/models -run '^$' -fuzz '^FuzzCompareRounds$' -fuzztime 30s
-          go test ./internal/importers/pdf -run '^$' -fuzz '^FuzzParsePDFText$' -fuzztime 30s
+          go test ./internal/platform/compression -run '^$' -fuzz '^FuzzNegotiate$' -fuzztime 30s
+          go test ./internal/shared/domain -run '^$' -fuzz '^FuzzNormalizeStudentID$' -fuzztime 30s
+          go test ./internal/shared/domain -run '^$' -fuzz '^FuzzParseLabels$' -fuzztime 30s
+          go test ./internal/shared/domain -run '^$' -fuzz '^FuzzCompareRounds$' -fuzztime 30s
+          go test ./internal/ingest/importer/pdf -run '^$' -fuzz '^FuzzParsePDFText$' -fuzztime 30s
 
   room-config-ui:
     name: Room Config UI Build

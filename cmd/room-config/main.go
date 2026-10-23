@@ -17,17 +17,17 @@ import (
 	"time"
 
 	"github.com/openkku/cp-examseat-backend/internal/config"
-	"github.com/openkku/cp-examseat-backend/internal/controllers"
-	"github.com/openkku/cp-examseat-backend/internal/repositories/filesystem"
-	"github.com/openkku/cp-examseat-backend/internal/routes"
+	"github.com/openkku/cp-examseat-backend/internal/roomconfig"
+	"github.com/openkku/cp-examseat-backend/internal/roomconfig/filesystem"
+	"github.com/openkku/cp-examseat-backend/internal/roomconfig/handler"
 )
 
 //go:embed all:frontend/dist
 var frontendDist embed.FS
 
 func main() {
-	store := filesystem.NewRoomConfigStore(config.Load().RoomDir())
-	handler := routes.NewRoomConfig(controllers.NewRoomConfigController(store), serveEmbeddedFrontend)
+	store := filesystem.NewStore(config.Load().RoomDir())
+	router := handler.NewRouter(handler.New(roomconfig.NewService(store)), serveEmbeddedFrontend)
 
 	// Loopback only: the tool edits files on disk and has no authentication.
 	addr := os.Getenv("ROOM_CONFIG_ADDR")
@@ -36,7 +36,7 @@ func main() {
 	}
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           handler,
+		Handler:           router,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

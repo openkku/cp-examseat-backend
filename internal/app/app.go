@@ -1,5 +1,5 @@
-// Package app is the composition root: it wires repositories, services,
-// views and controllers into an HTTP handler.
+// Package app is the composition root: it opens the database, wires every
+// feature slice's core to its adapters and builds the HTTP handler.
 package app
 
 import (
@@ -9,30 +9,45 @@ import (
 	"sync"
 	"time"
 
+	"github.com/openkku/cp-examseat-backend/internal/admin"
+	admindb "github.com/openkku/cp-examseat-backend/internal/admin/database"
+	adminhandler "github.com/openkku/cp-examseat-backend/internal/admin/handler"
+	"github.com/openkku/cp-examseat-backend/internal/checkex"
+	checkexdb "github.com/openkku/cp-examseat-backend/internal/checkex/database"
+	"github.com/openkku/cp-examseat-backend/internal/checkex/scrapler"
 	"github.com/openkku/cp-examseat-backend/internal/config"
-	"github.com/openkku/cp-examseat-backend/internal/controllers"
-	"github.com/openkku/cp-examseat-backend/internal/middleware"
-	"github.com/openkku/cp-examseat-backend/internal/repositories/filesystem"
-	"github.com/openkku/cp-examseat-backend/internal/repositories/scrapler"
-	"github.com/openkku/cp-examseat-backend/internal/repositories/sqlite"
-	"github.com/openkku/cp-examseat-backend/internal/routes"
-	"github.com/openkku/cp-examseat-backend/internal/services"
-	"github.com/openkku/cp-examseat-backend/internal/views"
+	"github.com/openkku/cp-examseat-backend/internal/exam"
+	examdb "github.com/openkku/cp-examseat-backend/internal/exam/database"
+	examhandler "github.com/openkku/cp-examseat-backend/internal/exam/handler"
+	"github.com/openkku/cp-examseat-backend/internal/ingest"
+	ingestdb "github.com/openkku/cp-examseat-backend/internal/ingest/database"
+	"github.com/openkku/cp-examseat-backend/internal/ingest/importer"
+	platformdb "github.com/openkku/cp-examseat-backend/internal/platform/database"
+	"github.com/openkku/cp-examseat-backend/internal/platform/database/sqlite"
+	"github.com/openkku/cp-examseat-backend/internal/platform/middleware"
+	"github.com/openkku/cp-examseat-backend/internal/room"
+	roomfs "github.com/openkku/cp-examseat-backend/internal/room/filesystem"
+	roomhandler "github.com/openkku/cp-examseat-backend/internal/room/handler"
+	"github.com/openkku/cp-examseat-backend/internal/round"
+	rounddb "github.com/openkku/cp-examseat-backend/internal/round/database"
+	roundhandler "github.com/openkku/cp-examseat-backend/internal/round/handler"
+	"github.com/openkku/cp-examseat-backend/internal/shared/httpx"
+	"github.com/openkku/cp-examseat-backend/internal/stats"
+	statsdb "github.com/openkku/cp-examseat-backend/internal/stats/database"
+	statshandler "github.com/openkku/cp-examseat-backend/internal/stats/handler"
 )
 
 // App is a fully wired backend.
 type App struct {
 	Handler http.Handler
 
-	cfg      config.Config
-	db       *sqlite.Database
-	rounds   *services.RoundService
-	stats    *services.StatsService
-	rooms    *services.RoomService
-	backups  *services.BackupService
-	checkex  *services.CheckexService
-	caches   []*views.ResponseCache
-	calendar *controllers.CalendarController
+	db      *platformdb.DB
+	rounds  *round.Service
+	stats   *stats.Service
+	rooms   *room.Service
+	checkex *checkex.Service
+	// clearCaches drops the cached responses after data changed.
+	clearCaches []func()
 
 	mu         sync.Mutex
 	lastReload time.Time
@@ -40,46 +55,51 @@ type App struct {
 
 // New opens the database, loads rounds, rooms and analytics, and builds the router.
 func New(ctx context.Context, cfg config.Config) (*App, error) {
-	db, err := sqlite.New(cfg.DatabasePath())
+	db, err := sqlite.Open(cfg.DatabasePath())
 	if err != nil {
 		return nil, err
 	}
 
 	a := &App{
-		cfg:     cfg,
-		db:      db,
-		rounds:  services.NewRoundService(db),
-		stats:   services.NewStatsService(db),
-		rooms:   services.NewRoomService(filesystem.LoadRoomCatalog(cfg.RoomDir(), cfg.ImageBaseURL)),
-		backups: services.NewBackupService(db, cfg.BackupDir, cfg.BackupKeep),
+		db:     db,
+		rounds: round.NewService(rounddb.New(db)),
+		stats:  stats.NewService(statsdb.New(db)),
+		rooms:  room.NewService(roomfs.Loader{RoomDir: cfg.RoomDir(), ImageBaseURL: cfg.ImageBaseURL}),
 		// On-demand lookups from checkex for CHECKEX_ROUNDS (nil, i.e. disabled, when unset).
-		checkex: services.NewCheckexService(services.CheckexOptions{
+		checkex: checkex.New(checkex.Options{
 			Rounds:         cfg.Checkex.Rounds,
 			RoundLabels:    cfg.Checkex.RoundLabels,
 			IDPrefixes:     cfg.Checkex.IDPrefixes,
 			NotFoundTTL:    cfg.Checkex.NotFoundTTL,
 			NotFoundLimit:  cfg.Checkex.NotFoundPerIP,
 			NotFoundWindow: cfg.Checkex.NotFoundWindow,
-		}, db, scrapler.NewClient(cfg.Checkex.ScraplerURL)),
+		}, checkexdb.New(db), scrapler.NewClient(cfg.Checkex.ScraplerURL)),
 	}
 	a.loadData(ctx)
 
-	clientIPs := middleware.NewClientIPResolver(cfg.TrustedProxies)
-	exams := services.NewExamService(db, a.rooms)
-	exploreCache := views.NewResponseCache(10_000, 5*time.Minute)
-	roomCache := views.NewResponseCache(10_000, 5*time.Minute)
-	a.caches = []*views.ResponseCache{exploreCache, roomCache}
-	a.calendar = controllers.NewCalendarController(exams, a.checkex, clientIPs.ClientIP)
+	var upstream exam.Upstream = exam.NoUpstream{}
+	if a.checkex != nil {
+		upstream = a.checkex
+	}
+	exams := exam.NewService(examdb.New(db), upstream, a.rooms)
+	ingestRepo := ingestdb.New(db)
+	admins := admin.NewService(admindb.New(db), ingestRepo, ingest.NewService(ingestRepo, importer.Registry{}), a.rooms, a)
 
-	a.Handler = routes.New(routes.Controllers{
-		Exam:     controllers.NewExamController(exams, a.checkex, clientIPs.ClientIP),
-		Explore:  controllers.NewExploreController(exams, exploreCache),
-		Calendar: a.calendar,
-		Room:     controllers.NewRoomController(a.rooms, roomCache, cfg.ImageDir()),
-		Round:    controllers.NewRoundController(a.rounds),
-		Stats:    controllers.NewStatsController(a.stats),
-		Admin:    controllers.NewAdminController(db, services.NewIngestService(db), a.backups, a.rooms, a, cfg.MaxUploadBytes),
-	}, routes.Options{
+	clientIPs := middleware.NewClientIPResolver(cfg.TrustedProxies)
+	exploreCache := httpx.NewResponseCache(10_000, 5*time.Minute)
+	roomCache := httpx.NewResponseCache(10_000, 5*time.Minute)
+	calendar := examhandler.NewCalendar(exams, clientIPs.ClientIP)
+	a.clearCaches = []func(){exploreCache.Clear, roomCache.Clear, calendar.ClearCache}
+
+	a.Handler = newRouter(handlers{
+		Exam:     examhandler.NewExam(exams, clientIPs.ClientIP),
+		Explore:  examhandler.NewExplore(exams, exploreCache),
+		Calendar: calendar,
+		Room:     roomhandler.New(a.rooms, roomCache, cfg.ImageDir()),
+		Round:    roundhandler.New(a.rounds),
+		Stats:    statshandler.New(a.stats),
+		Admin:    adminhandler.New(admins, cfg.MaxUploadBytes),
+	}, routerOptions{
 		AllowedOrigins: cfg.CORSAllowedOrigins,
 		RateLimit:      middleware.RateLimit(cfg.RateLimitRPS, cfg.RateLimitBurst, clientIPs),
 		AdminToken:     cfg.AdminToken,
@@ -111,7 +131,7 @@ func (a *App) loadData(ctx context.Context) {
 // Reload re-reads rounds, statistics and room files and clears every
 // response cache, so imported data shows up without a restart.
 func (a *App) Reload(ctx context.Context) error {
-	a.rooms.Replace(filesystem.LoadRoomCatalog(a.cfg.RoomDir(), a.cfg.ImageBaseURL))
+	a.rooms.Reload()
 	a.registerCheckexRounds(ctx)
 	if err := a.rounds.Load(ctx); err != nil {
 		return err
@@ -119,10 +139,9 @@ func (a *App) Reload(ctx context.Context) error {
 	if err := a.stats.Refresh(ctx, a.rounds.Labels()); err != nil {
 		return err
 	}
-	for _, c := range a.caches {
-		c.Clear()
+	for _, clear := range a.clearCaches {
+		clear()
 	}
-	a.calendar.ClearCache()
 
 	a.mu.Lock()
 	a.lastReload = time.Now().UTC()
@@ -144,15 +163,6 @@ func (a *App) LastReload() time.Time {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.lastReload
-}
-
-// RunBackups takes scheduled backups until ctx is cancelled (no-op without BACKUP_DIR).
-func (a *App) RunBackups(ctx context.Context) {
-	if !a.backups.Enabled() {
-		return
-	}
-	log.Printf("💾 Scheduled backups every %s to %s (keeping %d)", a.cfg.BackupInterval, a.cfg.BackupDir, a.cfg.BackupKeep)
-	a.backups.Schedule(ctx, a.cfg.BackupInterval)
 }
 
 // Close releases the database.
